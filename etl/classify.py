@@ -157,6 +157,11 @@ def _marcar_riesgo(filas: list[dict], geom, riesgos: gpd.GeoDataFrame | None,
     return out
 
 
+def umbral_traslape(area_comuna_m2: float) -> float:
+    """Traslape tolerado por comuna (ruido de punto flotante): max(1 m², 1e-6 × área de la comuna)."""
+    return max(1.0, 1e-6 * area_comuna_m2)
+
+
 def recortar_afectaciones(afect: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, cfg: dict,
                           f_cut: str, f_nom: str) -> gpd.GeoDataFrame:
     """Recorta las afectaciones a las comunas procesadas (--region o nacional) y les asigna cut/comuna.
@@ -236,6 +241,8 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
         qa["cobertura_pct"] = round(100 * cubierto / tot, 3) if tot else None
         qa["pct_riesgo"] = round(100 * float(riesgo_com.get(qa["cut"], 0.0)) / tot, 3) if tot else None
         qa["traslape_m2"] = round(max(0.0, float(suma_com.get(qa["cut"], 0.0)) - union_com.get(qa["cut"], 0.0)), 1)
+        qa["area_comuna_m2"] = round(tot, 1)
+        qa["traslape_ok"] = bool(qa["traslape_m2"] < umbral_traslape(tot))
         qa["sin_urbano"] = (qa["pct_U1"] or 0) + (qa["pct_U2"] or 0) + (qa["pct_U3"] or 0) == 0
     capa.insert(0, "id", [f"{c}-{i:05d}" for i, c in enumerate(capa["cut"])])
     return capa, qas

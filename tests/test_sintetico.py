@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from etl.arcgis import raw_path  # noqa: E402
 from etl.classify import clasificar  # noqa: E402
 from etl.export import anotar_legal, escribir  # noqa: E402
-from etl.classify import instrumentos_sin_comuna, recortar_afectaciones  # noqa: E402
+from etl.classify import instrumentos_sin_comuna, recortar_afectaciones, umbral_traslape  # noqa: E402
 from etl.normalize import ComunaResolver, aplicar_reglas, cut_por_cascada, load_layer, separar_afectaciones  # noqa: E402
 
 REG = "Región de La Araucanía"
@@ -146,7 +146,7 @@ def test_end_to_end():
         #    ('intersects' y no 'overlaps': este último no ve contención ni igualdad)
         for qa in qas:
             assert abs(qa["cobertura_pct"] - 100) <= 0.01, qa
-            assert qa["traslape_m2"] < 1.0, qa
+            assert qa["traslape_m2"] < umbral_traslape(qa["area_comuna_m2"]) and qa["traslape_ok"], qa
         geoms = list(capa.geometry)
         tree = shapely.STRtree(geoms)
         ovl = [(i, j) for i, j in zip(*tree.query(geoms, predicate="intersects")) if i < j
