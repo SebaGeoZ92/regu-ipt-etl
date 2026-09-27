@@ -28,7 +28,7 @@ ORDEN = [
     ("R1", "PRI_ENV"),   # contorno PRI sin zonificación: solo llena lo que la zonificación PRI no cubre
 ]
 CAMPOS = ["ipt_tipo", "ipt_nombre", "servicio", "capa", "zona", "zona_desc",
-          "attrs_raw", "fuente_url", "fecha_extraccion", "revisar"]
+          "attrs_raw", "fuente_url", "fecha_extraccion", "revisar", "riesgo"]
 
 
 def _resolver_traslapes(geoms: np.ndarray, grid: float) -> tuple[np.ndarray, int]:
@@ -76,7 +76,8 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
     qa = {"cut": cut, "comuna": nombre, "region": region, "traslapes_resueltos": 0,
           "instrumentos": set(), "revisar": 0}
 
-    idx = fuentes.sindex.query(geom, predicate="intersects")
+    # sindex.query devuelve índices en orden del árbol: se reordenan para respetar rango/área de 'fuentes'
+    idx = np.sort(fuentes.sindex.query(geom, predicate="intersects"))
     cand = fuentes.iloc[idx]
 
     for clase, clave in ORDEN:
@@ -111,7 +112,7 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
 
     if not restante.is_empty and restante.area >= min_area:
         filas.append({c: None for c in CAMPOS} | {
-            "revisar": False, "cut": cut, "comuna": nombre, "region": region,
+            "revisar": False, "riesgo": False, "cut": cut, "comuna": nombre, "region": region,
             "clase": "R2", "fuente": "SIN_IPT", "geometry": restante})
 
     qa["instrumentos"] = "; ".join(sorted(qa["instrumentos"]))

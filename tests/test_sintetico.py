@@ -103,10 +103,10 @@ def test_end_to_end():
         fuentes = gpd.GeoDataFrame(pd.concat(fuentes, ignore_index=True), crs=4326)
         assert set(fuentes["fuente"]) == {"PRC", "SECCIONAL", "LU", "PRI_E", "PRI_R", "PRI_ENV"}
         assert fuentes.loc[fuentes.zona == "ZX", "revisar"].item() is True
-        # Zonas de RIESGO dentro de PRC y PRI van a afectaciones, no a la partición
+        # Zonas de RIESGO dentro de PRC y PRI: siguen en la partición con riesgo=True y se copian a afectaciones
         zonas_af = set(pd.concat(afect).zona)
         assert {"AR-2", "Riesgo aluvión"} <= zonas_af
-        assert not ({"AR-2", "Riesgo aluvión"} & set(fuentes.zona))
+        assert fuentes.loc[fuentes.zona.isin(["AR-2", "Riesgo aluvión"]), "riesgo"].tolist() == [True, True]
 
         # zone_overrides gana sobre pri_subclase; AFECTACION saca la zona de la partición
         e_pri, p_pri = next((e, p) for e, p in catalogo if e["layer_name"] == "PRI_Temuco_PLC")
@@ -141,7 +141,13 @@ def test_end_to_end():
         # 4. Carahue: rural PRI + rural sin IPT; sin urbano
         assert {"R1", "R2"} == set(capa[capa.cut == "09102"].clase)
         assert q["09102"]["sin_urbano"] is True
-        # 5. La envolvente PRI solo llena lo que la zonificación PRI no cubre
+        # 5. Zona de riesgo dentro de un PRC: U1 con riesgo=True, nunca R2
+        ar2 = capa[capa.zona == "AR-2"]
+        assert len(ar2) == 1 and ar2.clase.item() == "U1" and ar2.riesgo.item() is True
+        ar2_geom = fuentes.to_crs(capa.crs).loc[fuentes.zona == "AR-2"].geometry.item()
+        assert capa[capa.clase == "R2"].intersection(ar2_geom).area.max() < 1.0
+        assert not capa[capa.clase != "R2"].riesgo.isna().any()
+        # 6. La envolvente PRI solo llena lo que la zonificación PRI no cubre
         car = capa[capa.cut == "09102"]
         zr2 = car[car.zona == "ZR-2"]
         assert len(zr2) == 1 and zr2.fuente.item() == "PRI_R" and abs(zr2.area_m2.item() - 96502624.8) < 1

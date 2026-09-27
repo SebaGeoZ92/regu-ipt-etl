@@ -182,14 +182,13 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
         out["revisar"] = False
         out["rango"] = 0
 
-    # Zonas de riesgo dentro de capas de zonificación (PRC/PRI/...) van a afectaciones, no a la partición
-    pat = cfg.get("zona_afectacion")
-    if pat and tipo != "AFECTACION":
-        m = [bool(re.search(pat, f"{norm_txt(z)} {norm_txt(d)}")) for z, d in zip(out["zona"], out["zona_desc"])]
-        out.loc[m, "fuente"] = "AFECTACION"
-        out.loc[m, "revisar"] = False
+    # Zonas de riesgo: se quedan en la partición, en la clase de su instrumento, con riesgo=True;
+    # separar_afectaciones además las copia a afectaciones
+    pat = cfg.get("zona_riesgo")
+    out["riesgo"] = [bool(pat and re.search(pat, f"{norm_txt(z)} {norm_txt(d)}"))
+                     for z, d in zip(out["zona"], out["zona_desc"])]
 
-    # zone_overrides "<ipt_nombre>|<zona>" (validados por el arquitecto) ganan sobre pri_subclase y zona_afectacion
+    # zone_overrides "<ipt_nombre>|<zona>" (validados por el arquitecto) ganan sobre pri_subclase
     zov = {_clave_zona(*k.split("|", 1)): v for k, v in (cfg.get("zone_overrides") or {}).items()}
     if zov:
         for i, (nom, z) in zip(out.index, zip(out["ipt_nombre"], out["zona"])):
@@ -218,8 +217,10 @@ def _clave_zona(nombre, zona) -> str:
 
 
 def separar_afectaciones(g: gpd.GeoDataFrame, tipo: str) -> tuple[gpd.GeoDataFrame | None, gpd.GeoDataFrame | None]:
-    """(partición, afectaciones): capas AFECTACION completas, o filas redirigidas a AFECTACION."""
+    """(partición, afectaciones): capas AFECTACION completas, filas con zone_override AFECTACION
+    y copia de las zonas de riesgo (que también siguen en la partición)."""
     if tipo == "AFECTACION":
         return None, g
-    m = g["fuente"] == "AFECTACION"
-    return (g[~m] if (~m).any() else None), (g[m] if m.any() else None)
+    fuera = g["fuente"] == "AFECTACION"
+    af = fuera | g["riesgo"].astype(bool)
+    return (g[~fuera] if (~fuera).any() else None), (g[af] if af.any() else None)
