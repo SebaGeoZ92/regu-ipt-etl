@@ -17,6 +17,7 @@ from etl.classify import clasificar  # noqa: E402
 from etl.export import anotar_legal, escribir  # noqa: E402
 from etl.classify import instrumentos_sin_comuna, recortar_afectaciones, umbral_traslape  # noqa: E402
 from etl.normalize import ComunaResolver, aplicar_reglas, cut_por_cascada, load_layer, separar_afectaciones  # noqa: E402
+from etl.revision import generar_revision, importar_revision  # noqa: E402
 
 REG = "Región de La Araucanía"
 
@@ -195,6 +196,31 @@ def test_end_to_end():
         gj = json.loads(Path(prod["geojson"]).read_text(encoding="utf-8"))
         assert gj["features"][0]["properties"]["norma_titulo"]
         print(json.dumps(prod["resumen"], ensure_ascii=False, indent=1))
+
+        # Revisión del arquitecto: CSV de zonas revisar=True → importar-revision → zone_overrides
+        csv_rev = tmp / "out" / "revision_arquitecto.csv"
+        rev = generar_revision(capa, csv_rev)
+        assert list(rev.columns) == ["ipt_nombre", "zona", "zona_desc", "comunas", "ha", "subclase_actual", "decision"]
+        assert rev[["ipt_nombre", "zona", "comunas", "subclase_actual"]].values.tolist() == \
+            [["Temuco PLC", "ZX", "Padre Las Casas", "R"]]
+        rev.loc[0, "decision"] = "e"
+        rev.to_csv(csv_rev, index=False, encoding="utf-8-sig")
+        assert generar_revision(capa, csv_rev).loc[0, "decision"] == "e"   # rebuild no borra decisiones
+        cfg_tmp = tmp / "config.yaml"
+        cfg_tmp.write_text((ROOT / "config.yaml").read_text(encoding="utf-8"), encoding="utf-8")
+        assert importar_revision(csv_rev, cfg_tmp) == {"Temuco PLC|ZX": "E"}
+        cfg2 = yaml.safe_load(cfg_tmp.read_text(encoding="utf-8"))
+        assert cfg2["zone_overrides"] == {"Temuco PLC|ZX": "E"} and cfg2["pri_subclase"] == cfg["pri_subclase"]
+        e_pri, p_pri = next((e, p) for e, p in catalogo if e["layer_name"] == "PRI_Temuco_PLC")
+        zx = load_layer(p_pri, e_pri, cfg2, res).set_index("zona").loc["ZX"]
+        assert zx["fuente"] == "PRI_E" and not zx["revisar"]
+        rev.loc[0, "decision"] = "X"
+        rev.to_csv(csv_rev, index=False, encoding="utf-8-sig")
+        try:
+            importar_revision(csv_rev, cfg_tmp)
+            raise AssertionError("debió rechazar decision inválida")
+        except ValueError:
+            pass
         print(capa[["id", "comuna", "clase", "fuente", "ipt_nombre", "zona", "area_m2"]].to_string())
 
 

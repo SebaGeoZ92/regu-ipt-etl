@@ -7,6 +7,7 @@ Uso:
   python run.py download [--region ARAUCANIA] [--refresh]
   python run.py build    [--region ARAUCANIA] [--postgis]
   python run.py all      [--region ARAUCANIA] [--postgis]
+  python run.py importar-revision data/out/revision_arquitecto.csv   # decisiones del arquitecto → zone_overrides
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ from etl.arcgis import ArcGISClient, ArcGISError, discover, download_entry, raw_
 from etl.classify import clasificar, instrumentos_sin_comuna, recortar_afectaciones
 from etl.export import anotar_legal, cargar_postgis, escribir
 from etl.normalize import ComunaResolver, load_layer, norm_txt, normalizar_catalogo, separar_afectaciones
+from etl.revision import generar_revision, importar_revision
 
 ROOT = Path(__file__).parent
 log = logging.getLogger("regu-ipt")
@@ -206,14 +208,28 @@ def cmd_build(cfg, args):
     capa = anotar_legal(capa, legal)
     sufijo = norm_txt(args.region).lower().replace(" ", "_") if args.region else "nacional"
     prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo, sin_comuna)
+    rev = generar_revision(capa, ROOT / cfg["paths"]["out"] / "revision_arquitecto.csv")
+    log.info("revision_arquitecto.csv: %d zonas con revisar=True (%d ya decididas)",
+             len(rev), int((rev["decision"] != "").sum()))
     log.info("Listo: %s", json.dumps(prod["resumen"], ensure_ascii=False))
     if args.postgis:
         cargar_postgis(capa, afect_gdf)
 
 
+def cmd_importar_revision(cfg, args):
+    if not args.archivo:
+        sys.exit("Uso: python run.py importar-revision <csv>")
+    try:
+        fusion = importar_revision(Path(args.archivo), ROOT / "config.yaml")
+    except (ValueError, FileNotFoundError) as ex:
+        sys.exit(str(ex))
+    print(f"zone_overrides en config.yaml: {len(fusion)} zonas. Corre build para aplicarlas.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all"])
+    ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision"])
+    ap.add_argument("archivo", nargs="?", help="importar-revision: CSV revision_arquitecto con 'decision' llena")
     ap.add_argument("--region", help="regex sobre el nombre de región (ej. ARAUCANIA)")
     ap.add_argument("--refresh", action="store_true", help="vuelve a descargar aunque exista caché")
     ap.add_argument("--postgis", action="store_true", help="carga a PostGIS (requiere DATABASE_URL)")
@@ -230,6 +246,8 @@ def main():
         cmd_download(cfg, args)
     if args.cmd in ("build", "all"):
         cmd_build(cfg, args)
+    if args.cmd == "importar-revision":
+        cmd_importar_revision(cfg, args)
 
 
 if __name__ == "__main__":
