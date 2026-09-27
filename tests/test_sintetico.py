@@ -91,6 +91,14 @@ def test_end_to_end():
                          "Limite_Urbano": "LU", "Limites_Urbanos_PRC": "LU",
                          "PRI_Temuco_PLC": "PRI", "Límite área rural PRI": "PRI", "PRC_Temuco_Riesgo": "AFECTACION"}
 
+        # layer_rules_prioritarias ganan sobre service_rules, salvo servicios IGNORAR
+        tipo = lambda s, n: aplicar_reglas({"service": s, "layer_id": 0, "layer_name": n}, cfg)["tipo"]  # noqa: E731
+        assert tipo("IPT/PRMS", "PRMS_Riesgo_Quebradas") == "AFECTACION"
+        assert tipo("IPT/PRI_Valparaiso", "Vialida estructurante") == "AFECTACION"
+        assert tipo("IPT/PRI_Valparaiso", "Límite Urbano") == "LU"
+        assert tipo("IPT/PRMS", "PRMS_USO_Suelo") == "PRM"
+        assert tipo("IPT/PRC_Nuble", "PRC_Bulnes_Area_de_riesgo") == "IGNORAR"
+
         res = ComunaResolver(comunas, "CUT_COM", "COMUNA")
         assert res.resolve("Temuco Labranza") == "09101"
         assert res.resolve("Padre_Las_Casas") == "09112"

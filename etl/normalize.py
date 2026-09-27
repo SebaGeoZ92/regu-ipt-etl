@@ -33,18 +33,26 @@ def tipo_capa(entry: dict, rules: list[dict], overrides: dict) -> str:
 
 
 def aplicar_reglas(entry: dict, cfg: dict) -> dict:
-    """Asigna tipo (y pri_default) a una capa: override > regla de servicio > regla de capa."""
+    """Asigna tipo (y pri_default) a una capa: override > servicio IGNORAR > layer_rules_prioritarias
+    > regla de servicio > regla de capa."""
     key = f"{entry['service']}/{entry['layer_id']}"
     entry["pri_default"] = None
     overrides = cfg.get("overrides") or {}
     if key in overrides:
         entry["tipo"] = overrides[key]
         return entry
-    for r in cfg.get("service_rules") or []:
-        if re.search(r["pattern"], entry["service"], re.I):
+    srv = next((r for r in cfg.get("service_rules") or [] if re.search(r["pattern"], entry["service"], re.I)), None)
+    if srv and srv["tipo"] == "IGNORAR":   # exclusión deliberada del servicio (duplicados, PRDU)
+        entry["tipo"] = "IGNORAR"
+        return entry
+    for r in cfg.get("layer_rules_prioritarias") or []:
+        if re.search(r["pattern"], entry["layer_name"], re.I):
             entry["tipo"] = r["tipo"]
-            entry["pri_default"] = r.get("pri_default")
             return entry
+    if srv:
+        entry["tipo"] = srv["tipo"]
+        entry["pri_default"] = srv.get("pri_default")
+        return entry
     entry["tipo"] = tipo_capa(entry, cfg["layer_rules"], {})
     return entry
 

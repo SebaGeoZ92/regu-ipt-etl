@@ -32,6 +32,12 @@ build:
   incluir_attrs_raw_geojson: false   # el GPKG siempre las lleva
   precision_geojson: 6
 
+# Tipo de capa según su NOMBRE, evaluado ANTES que service_rules (salvo servicios IGNORAR).
+# Solo patrones inequívocos: dentro de servicios PRI/PRMS hay capas de riesgo, LU o vialidad.
+layer_rules_prioritarias:
+  - {pattern: "(riesgo|patrimon|zona[_ ]?t[ií]pica|vialid)", tipo: AFECTACION}
+  - {pattern: "l[ií]mites?[_ ]?urbanos?", tipo: LU}
+
 # Tipo de capa según el SERVICIO (se evalúa antes que layer_rules; gana la primera coincidencia).
 # pri_default: subclase para zonas PRI/PRM cuya sigla no calza con pri_subclase (E, R o U).
 service_rules:
