@@ -26,7 +26,7 @@ from pyproj import Transformer
 from etl.arcgis import ArcGISClient, ArcGISError, discover, download_entry, raw_path
 from etl.classify import clasificar
 from etl.export import anotar_legal, cargar_postgis, escribir
-from etl.normalize import ComunaResolver, load_layer, norm_txt, normalizar_catalogo
+from etl.normalize import ComunaResolver, load_layer, norm_txt, normalizar_catalogo, separar_afectaciones
 
 ROOT = Path(__file__).parent
 log = logging.getLogger("regu-ipt")
@@ -185,7 +185,11 @@ def cmd_build(cfg, args):
         g = load_layer(p, e, cfg, resolver)
         if g is None or g.empty:
             continue
-        (afect if e["tipo"] == "AFECTACION" else capas).append(g)
+        part, af = separar_afectaciones(g, e["tipo"])
+        if part is not None:
+            capas.append(part)
+        if af is not None:
+            afect.append(af)
     if not capas:
         log.warning("No hay capas IPT descargadas: todo quedará como R2")
     fuentes = gpd.GeoDataFrame(pd.concat(capas, ignore_index=True), crs=4326) if capas else \

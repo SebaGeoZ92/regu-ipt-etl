@@ -176,4 +176,31 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
     else:
         out["fuente"] = tipo
         out["revisar"] = False
+
+    # zone_overrides "<ipt_nombre>|<zona>" (validados por el arquitecto) ganan sobre pri_subclase
+    zov = {_clave_zona(*k.split("|", 1)): v for k, v in (cfg.get("zone_overrides") or {}).items()}
+    if zov:
+        for i, (nom, z) in zip(out.index, zip(out["ipt_nombre"], out["zona"])):
+            v = zov.get(_clave_zona(nom, z))
+            if v is None:
+                continue
+            if v == "AFECTACION":
+                out.at[i, "fuente"] = "AFECTACION"
+            elif tipo in INTERCOMUNALES:
+                out.at[i, "fuente"] = f"PRI_{v}"
+            else:
+                continue
+            out.at[i, "revisar"] = False
     return out
+
+
+def _clave_zona(nombre, zona) -> str:
+    return f"{norm_txt(nombre)}|{norm_txt(zona)}"
+
+
+def separar_afectaciones(g: gpd.GeoDataFrame, tipo: str) -> tuple[gpd.GeoDataFrame | None, gpd.GeoDataFrame | None]:
+    """(partición, afectaciones): capas AFECTACION completas, o filas redirigidas a AFECTACION."""
+    if tipo == "AFECTACION":
+        return None, g
+    m = g["fuente"] == "AFECTACION"
+    return (g[~m] if (~m).any() else None), (g[m] if m.any() else None)

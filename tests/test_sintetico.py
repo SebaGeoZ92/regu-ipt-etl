@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from etl.arcgis import raw_path  # noqa: E402
 from etl.classify import clasificar  # noqa: E402
 from etl.export import anotar_legal, escribir  # noqa: E402
-from etl.normalize import ComunaResolver, load_layer, tipo_capa  # noqa: E402
+from etl.normalize import ComunaResolver, load_layer, separar_afectaciones, tipo_capa  # noqa: E402
 
 REG = "Región de La Araucanía"
 
@@ -88,12 +88,23 @@ def test_end_to_end():
 
         fuentes, afect = [], []
         for e, p in catalogo:
-            g = load_layer(p, e, cfg, res)
-            (afect if e["tipo"] == "AFECTACION" else fuentes).append(g)
+            part, af = separar_afectaciones(load_layer(p, e, cfg, res), e["tipo"])
+            if part is not None:
+                fuentes.append(part)
+            if af is not None:
+                afect.append(af)
         import pandas as pd
         fuentes = gpd.GeoDataFrame(pd.concat(fuentes, ignore_index=True), crs=4326)
         assert set(fuentes["fuente"]) == {"PRC", "SECCIONAL", "LU", "PRI_E", "PRI_R"}
         assert fuentes.loc[fuentes.zona == "ZX", "revisar"].item() is True
+
+        # zone_overrides gana sobre pri_subclase; AFECTACION saca la zona de la partición
+        e_pri, p_pri = next((e, p) for e, p in catalogo if e["layer_name"] == "PRI_Temuco_PLC")
+        cfg_zo = {**cfg, "zone_overrides": {"Temuco PLC|ZX": "E", "Temuco_PLC|zr-3": "AFECTACION"}}
+        part, af = separar_afectaciones(load_layer(p_pri, e_pri, cfg_zo, res), e_pri["tipo"])
+        zx = part[part.zona == "ZX"].iloc[0]
+        assert zx["fuente"] == "PRI_E" and not zx["revisar"]
+        assert list(af.zona) == ["ZR-3"] and "ZR-3" not in set(part.zona)
 
         capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION")
 
