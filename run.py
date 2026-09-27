@@ -131,11 +131,36 @@ def leer_catalogo(cfg) -> list[dict]:
     return [e for e in cat if e["tipo"] != "IGNORAR"]
 
 
+def filtrar_catalogo_region(cli: ArcGISClient, cat: list[dict], filtro) -> list[dict]:
+    """Mismo filtro por extensión de servicio que discover. Catálogos antiguos no traen
+    service_extent: se pide la info del servicio una vez; si falla, la capa se incluye."""
+    extents: dict[tuple, dict | None] = {}
+    out = []
+    for e in cat:
+        k = (e["service"], e.get("service_type") or "MapServer")
+        if k not in extents:
+            ext = e.get("service_extent")
+            if ext is None:
+                try:
+                    sinfo = cli.service_info(*k)
+                    ext = sinfo.get("fullExtent") or sinfo.get("initialExtent")
+                except ArcGISError as ex:
+                    log.warning("Sin extensión para %s (%s): se incluye", k[0], ex)
+            extents[k] = ext
+        if extents[k] is None or filtro(e["service"], {"fullExtent": extents[k]}):
+            out.append(e)
+    log.info("--region: %d de %d capas en %d servicios", len(out), len(cat), len({x["service"] for x in out}))
+    return out
+
+
 def cmd_download(cfg, args):
     cli = cliente(cfg)
     raw = ROOT / cfg["paths"]["raw"]
     fallas = []
-    for e in leer_catalogo(cfg):
+    cat = leer_catalogo(cfg)
+    if args.region:
+        cat = filtrar_catalogo_region(cli, cat, filtro_por_extension(cargar_comunas(cfg, args.region)))
+    for e in cat:
         try:
             download_entry(cli, e, raw, refresh=args.refresh)
         except ArcGISError as ex:

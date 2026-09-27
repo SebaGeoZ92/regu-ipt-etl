@@ -149,6 +149,8 @@ def discover(client: ArcGISClient, folders: list[str], service_filter=None) -> l
                     "url": f"{client.service_url(name, stype)}/{lyr['id']}",
                     "service_wkid": (sinfo.get("spatialReference") or {}).get("latestWkid")
                                     or (sinfo.get("spatialReference") or {}).get("wkid"),
+                    # para filtrar download --region sin volver a pedir el servicio
+                    "service_extent": sinfo.get("fullExtent") or sinfo.get("initialExtent"),
                 })
             log.info("%s · %d capas", name, len(sinfo.get("layers", [])))
     return catalogo
