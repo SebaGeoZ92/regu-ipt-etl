@@ -48,6 +48,9 @@ service_rules:
 # Tipo de capa según su NOMBRE (servicios no cubiertos arriba, p.ej. PRC_<Región>). Se evalúa en orden; gana la primera coincidencia.
 layer_rules:
   - {pattern: "(riesgo|patrimon|inund|remoci|tsunami|zona_?t[ií]pica|afecta|vialidad)", tipo: AFECTACION}
+  # Capas superpuestas dentro de PRC: zonas no edificables, inmuebles/zonas de conservación histórica,
+  # áreas de riesgo (AR) y restricciones. Si entran como PRC extienden U1 fuera de la zonificación.
+  - {pattern: "((^|[_ \\-])(ZNE|ICH|ZCH|AR)([_ \\-]|$)|restricci)", tipo: AFECTACION}
   - {pattern: "^(plano[_ ])?(seccional|ps)[_ ]", tipo: SECCIONAL}   # "Plano_Seccional_..." (Negrete, Puente Alto)
   - {pattern: "(l[ií]mite[_ ]?urbano|^lu[_ ])", tipo: LU}
   - {pattern: "^(prms|prm|metropolitano)", tipo: PRM}
@@ -56,8 +59,10 @@ layer_rules:
   - {pattern: ".*", tipo: IGNORAR}
 
 # Correcciones manuales por capa (ganan sobre todo): "<servicio>/<id_capa>": TIPO
-overrides: {}
 #  "IPT/PRC_Atacama/8": AFECTACION
+overrides:
+  "IPT/PRC_Valparaíso/71": PRC          # IPT_PRC_05_Los_Andes: zonificación vigente (D. 10, DO 22-01-2026)
+  "IPT/PRC_Valparaíso/68": AFECTACION   # PRC_Los_Andes_R: solo 'Área de Riesgo' (OGUC 2.1.17)
 
 zone_fields: [ZONA, ZONIFICACION, ZONIFICACI, NOM_ZONA, NOMBRE_ZONA, ZONA_PRC, COD_ZONA, SIGLA, CODIGO, ZONAS, NOMBRE]
 zone_desc_fields: [DESCRIPCION, DESCRIPCIO, DESCRIP, NOMBRE_ZONA, NOM_ZONA, USO, USO_SUELO, DETALLE, OBS]
