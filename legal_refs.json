@@ -1,0 +1,36 @@
+{
+  "_estado": "BORRADOR - validar con arquitecto/abogado antes de publicar",
+  "_aviso": "Información referencial. No reemplaza el Certificado de Informaciones Previas emitido por la DOM (OGUC art. 1.4.4).",
+  "clases": {
+    "U1": {
+      "titulo": "Urbano normado por Plan Regulador Comunal o Seccional",
+      "resumen": "Rigen las normas urbanísticas de la zona indicada en la ordenanza local del instrumento (usos de suelo, constructibilidad, ocupación, alturas, rasantes, antejardines, etc.).",
+      "normas": ["Ordenanza local del PRC / Plan Seccional", "LGUC", "OGUC art. 1.4.4 (CIP)"]
+    },
+    "U2": {
+      "titulo": "Urbano definido solo por Límite Urbano",
+      "resumen": "Área dentro del límite urbano sin Plan Regulador Comunal ni Seccional. Aplican las disposiciones del Plan Intercomunal/Metropolitano si existe y, supletoriamente, las normas generales de la LGUC y OGUC.",
+      "normas": ["Límite Urbano vigente", "PRI/PRM si aplica", "LGUC", "OGUC"]
+    },
+    "U3": {
+      "titulo": "Urbano definido por Plan Intercomunal o Metropolitano",
+      "resumen": "Zona urbana establecida por el PRI/PRM en un sector no cubierto por PRC, Seccional ni Límite Urbano comunal.",
+      "normas": ["Ordenanza del PRI/PRM", "LGUC", "OGUC"]
+    },
+    "E": {
+      "titulo": "Área de extensión urbana (PRI/PRM)",
+      "resumen": "Territorio que el plan intercomunal destina a crecimiento urbano. Rigen las normas de la zona de extensión del PRI/PRM.",
+      "normas": ["Ordenanza del PRI/PRM", "LGUC", "OGUC"]
+    },
+    "R1": {
+      "titulo": "Rural con zonificación de PRI/PRM",
+      "resumen": "Área rural regulada por un plan intercomunal. Aplica el art. 55 de la LGUC y, además, las condiciones que el PRI/PRM fija para esa zona rural.",
+      "normas": ["LGUC art. 55", "Ordenanza del PRI/PRM", "DL 3.516"]
+    },
+    "R2": {
+      "titulo": "Rural sin instrumento de planificación",
+      "resumen": "Fuera de los límites urbanos no se permite abrir calles, subdividir para formar poblaciones ni levantar construcciones, salvo las necesarias para la explotación agrícola, la vivienda del propietario y sus trabajadores, y los casos que la ley habilita con autorización de la Seremi MINVU e informe del SAG (art. 55 LGUC). La subdivisión de predios rústicos se rige por el DL 3.516 (superficie mínima 0,5 ha).",
+      "normas": ["LGUC art. 55", "DL 3.516"]
+    }
+  }
+}

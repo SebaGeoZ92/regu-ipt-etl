@@ -1,0 +1,58 @@
+# ─────────────────────────────────────────────────────────────
+# regu-ipt-etl · configuración
+# ─────────────────────────────────────────────────────────────
+arcgis:
+  base_url: https://geoide.minvu.cl/server/rest/services
+  folders: [IPT]
+  timeout: 90          # segundos por request
+  retries: 6           # reintentos ante 5xx / 429 / caídas del Web Adaptor
+  backoff: 2.0         # backoff exponencial entre reintentos
+  pause_s: 0.5         # pausa de cortesía entre requests
+  geometry_precision: 7
+
+paths:
+  raw: data/raw        # caché de descargas (una vez bajado, no se vuelve a pedir)
+  out: data/out
+  comunas: data/base/comunas.gpkg   # DPA nacional (BCN o IDE Chile), polígonos comunales
+
+comunas:
+  layer: null          # nombre de capa si el archivo tiene varias
+  field_cut: CUT_COM
+  field_nombre: COMUNA
+  field_region: REGION
+
+crs:
+  trabajo: ESRI:102033 # overlays en métrico y equivalente de área; sirve de Arica a Magallanes
+  area: ESRI:102033    # South America Albers Equal Area, para áreas
+  salida: EPSG:4326
+
+build:
+  grid_m: 0            # snapping de overlays en metros (0 = precisión flotante exacta; probar 0.001 si GEOS reclama topología)
+  min_area_m2: 1.0     # descarta astillas menores a esto
+  incluir_attrs_raw_geojson: false   # el GPKG siempre las lleva
+  precision_geojson: 6
+
+# Tipo de capa según su NOMBRE. Se evalúa en orden; gana la primera coincidencia.
+layer_rules:
+  - {pattern: "(riesgo|patrimon|inund|remoci|tsunami|zona_?t[ií]pica|afecta|vialidad)", tipo: AFECTACION}
+  - {pattern: "^(seccional|ps)[_ ]", tipo: SECCIONAL}
+  - {pattern: "(l[ií]mite[_ ]?urbano|^lu[_ ])", tipo: LU}
+  - {pattern: "^(prms|prm|metropolitano)", tipo: PRM}
+  - {pattern: "^(pri|intercomunal)", tipo: PRI}
+  - {pattern: "^(prc|plan[_ ]regulador)", tipo: PRC}
+  - {pattern: ".*", tipo: IGNORAR}
+
+# Correcciones manuales: "<servicio>/<id_capa>": TIPO
+overrides: {}
+#  "IPT/PRC_Atacama/8": AFECTACION
+
+zone_fields: [ZONA, ZONIFICACION, ZONIFICACI, NOM_ZONA, NOMBRE_ZONA, ZONA_PRC, COD_ZONA, SIGLA, CODIGO, ZONAS, NOMBRE]
+zone_desc_fields: [DESCRIPCION, DESCRIPCIO, DESCRIP, NOMBRE_ZONA, NOM_ZONA, USO, USO_SUELO, DETALLE, OBS]
+comuna_fields: [CUT, CUT_COM, COD_COMUNA, COMUNA, NOM_COMUNA, NOM_COM, NOMBRE_COM]
+
+# Subclase de zonas PRI/PRM (regex sobre ZONA + DESCRIPCIÓN, en mayúsculas sin tildes).
+# Orden importa: E antes que U porque "extension urbana" contiene "URBAN".
+pri_subclase:
+  E: "(EXTENSION|\\bZEU|\\bAEU|URBANIZABLE)"
+  R: "(RURAL|SILVO|AGRO|AGRIC|PROTECCION|PRESERVACION|\\bZR|\\bAR\\b|INTERES|VALOR NATURAL|RESTRICCION)"
+  U: "(URBAN|CONSOLIDAD|\\bZU|\\bAU\\b)"
