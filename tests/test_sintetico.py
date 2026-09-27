@@ -129,7 +129,10 @@ def test_end_to_end():
         assert set(fuentes.loc[fuentes.ipt_tipo == "LU", "cut_ipt"]) == {"09112"}
         assert instrumentos_sin_comuna(fuentes, comunas, "COMUNA").empty
 
-        capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION")
+        afect_todas = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326)
+        riesgos = afect_todas[afect_todas.riesgo.astype(bool)]
+        assert {"AR-1", "AR-2", "Riesgo aluvión"} == set(riesgos.zona)   # capa AFECTACION + zonas de PRC y PRI
+        capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION", riesgos)
 
         # 1. Cobertura de 100% ± 0,01 en TODAS las comunas y sin traslapes
         #    ('intersects' y no 'overlaps': este último no ve contención ni igualdad)
@@ -154,23 +157,30 @@ def test_end_to_end():
         # 4. Carahue: rural PRI + rural sin IPT; sin urbano
         assert {"R1", "R2"} == set(capa[capa.cut == "09102"].clase)
         assert q["09102"]["sin_urbano"] is True
-        # 5. Zona de riesgo dentro de un PRC: U1 con riesgo=True, nunca R2
-        ar2 = capa[capa.zona == "AR-2"]
-        assert len(ar2) == 1 and ar2.clase.item() == "U1" and ar2.riesgo.item() is True
-        ar2_geom = fuentes.to_crs(capa.crs).loc[fuentes.zona == "AR-2"].geometry.item()
-        assert capa[capa.clase == "R2"].intersection(ar2_geom).area.max() < 1.0
-        assert not capa[capa.clase != "R2"].riesgo.isna().any()
-        # 6. La envolvente PRI solo llena lo que la zonificación PRI no cubre
+        # 5. Riesgo como superposición, no como competidor: la zona base conserva clase y nombre,
+        #    y la parte que cae dentro del riesgo sale con riesgo=True (nunca R2)
+        rg = riesgos.to_crs(capa.crs).set_index("zona").geometry
+        assert capa.riesgo.notna().all()
+        for z, base in (("AR-2", {"ZU-1", "ZU-2"}), ("AR-1", {"ZU-1", "ZU-2"}), ("Riesgo aluvión", {"ZR-2"})):
+            toca = capa[capa.intersection(rg[z]).area > 1.0]
+            assert set(toca.zona) <= base and toca.riesgo.all(), (z, toca[["zona", "clase", "riesgo"]])
+            assert abs(toca.intersection(rg[z]).area.sum() - rg[z].area) < 1.0
+        assert "U1" in set(capa[capa.intersection(rg["AR-2"]).area > 1.0].clase)
+        assert not {"AR-2", "Riesgo aluvión"} & set(capa.zona)
+        assert not capa[capa.zona == "ZEU-1"].riesgo.any()
+        # Zona de riesgo contenida en una zona PRI con subclase explícita: ZR-2 conserva clase y área total
         car = capa[capa.cut == "09102"]
         zr2 = car[car.zona == "ZR-2"]
-        assert len(zr2) == 1 and zr2.fuente.item() == "PRI_R" and abs(zr2.area_m2.item() - 96502624.8) < 1
+        assert set(zr2.fuente) == {"PRI_R"} and set(zr2.clase) == {"R1"}
+        assert abs(zr2.area_m2.sum() - 96502624.8) < 1
+        assert sorted(zr2.riesgo.tolist()) == [False, True]
+        # 6. La envolvente PRI solo llena lo que la zonificación PRI no cubre
         assert "PRI_ENV" in set(car.fuente) and not car[car.fuente == "PRI_ENV"].revisar.any()
 
         legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
         capa = anotar_legal(capa, legal)
-        afect_gdf = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326)
         # Afectaciones recortadas a las comunas procesadas y con cut: solo Temuco, sin Carahue
-        afect_gdf = recortar_afectaciones(afect_gdf, comunas[comunas.CUT_COM != "09102"], cfg, "CUT_COM", "COMUNA")
+        afect_gdf = recortar_afectaciones(afect_todas, comunas[comunas.CUT_COM != "09102"], cfg, "CUT_COM", "COMUNA")
         assert dict(zip(afect_gdf.zona, afect_gdf.cut)) == {"AR-1": "09101", "AR-2": "09101"}
         prod = escribir(capa, afect_gdf, qas, tmp / "out", cfg, "test")
         assert Path(prod["geojson"]).exists() and Path(prod["gpkg"]).exists()

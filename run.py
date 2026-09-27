@@ -194,15 +194,16 @@ def cmd_build(cfg, args):
         log.warning("No hay capas IPT descargadas: todo quedará como R2")
     fuentes = gpd.GeoDataFrame(pd.concat(capas, ignore_index=True), crs=4326) if capas else \
         gpd.GeoDataFrame(columns=["fuente", "cut_ipt", "geometry"], geometry="geometry", crs=4326)
-    capa, qas = clasificar(comunas, fuentes, cfg, c["field_cut"], c["field_nombre"], c["field_region"])
+    afect_gdf = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326) if afect else None
+    if afect_gdf is not None:
+        afect_gdf = recortar_afectaciones(afect_gdf, comunas, cfg, c["field_cut"], c["field_nombre"])
+    riesgos = afect_gdf[afect_gdf["riesgo"].fillna(False).astype(bool)] if afect_gdf is not None else None
+    capa, qas = clasificar(comunas, fuentes, cfg, c["field_cut"], c["field_nombre"], c["field_region"], riesgos)
     sin_comuna = instrumentos_sin_comuna(fuentes, comunas, c["field_nombre"])
     for _, r in sin_comuna.iterrows():
         log.warning("Sin comuna: %s/%s (%d features) toca %s", r["servicio"], r["capa"], r["features"], r["comunas_tocadas"])
     legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
     capa = anotar_legal(capa, legal)
-    afect_gdf = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326) if afect else None
-    if afect_gdf is not None:
-        afect_gdf = recortar_afectaciones(afect_gdf, comunas, cfg, c["field_cut"], c["field_nombre"])
     sufijo = norm_txt(args.region).lower().replace(" ", "_") if args.region else "nacional"
     prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo, sin_comuna)
     log.info("Listo: %s", json.dumps(prod["resumen"], ensure_ascii=False))

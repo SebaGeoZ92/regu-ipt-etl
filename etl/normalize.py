@@ -166,8 +166,8 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
     if tipo == "LU":
         out["ipt_nombre"] = [f"Límite Urbano {resolver.nombre.get(c, '')}".strip() for c in out["cut_ipt"]]
 
-    # Fuente de clasificación. 'rango' ordena el área disputada dentro de una misma fuente PRI:
-    # 0 subclase explícita (o zone_override) > 1 revisar > 2 pri_default > 3 envolvente (PRI_ENV)
+    # Fuente de clasificación. 'rango' ordena el área disputada dentro de una misma fuente:
+    # 0 subclase explícita (o zone_override) > 1 revisar > 2 pri_default > 3 zona de riesgo > 4 envolvente (PRI_ENV)
     if tipo in INTERCOMUNALES:
         subs = [pri_subclase(z, d, cfg["pri_subclase"]) for z, d in zip(out["zona"], out["zona_desc"])]
         defecto = entry.get("pri_default")
@@ -175,17 +175,23 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
         out["revisar"] = [s is None and not defecto for s in subs]
         out["rango"] = [0 if s else (2 if defecto else 1) for s in subs]
         if es_envolvente(entry, cfg):
-            out["fuente"], out["revisar"], out["rango"] = "PRI_ENV", False, 3
+            out["fuente"], out["revisar"], out["rango"] = "PRI_ENV", False, 4
     else:
         out["fuente"] = tipo
         out["revisar"] = False
         out["rango"] = 0
 
-    # Zonas de riesgo: se quedan en la partición, en la clase de su instrumento, con riesgo=True;
-    # separar_afectaciones además las copia a afectaciones
+    # Zonas de riesgo (por ZONA/descripción o por nombre de capa): superposición, no competidor.
+    # En la partición solo llenan lo que no cubre otra zona de su fuente; clasificar marca riesgo=True
+    # en la parte de cada pieza que cae dentro de algún polígono de riesgo. separar_afectaciones las copia.
     pat = cfg.get("zona_riesgo")
-    out["riesgo"] = [bool(pat and re.search(pat, f"{norm_txt(z)} {norm_txt(d)}"))
+    capa_riesgo = bool(pat and re.search(pat, norm_txt(entry["layer_name"])))
+    out["riesgo"] = [capa_riesgo or bool(pat and re.search(pat, f"{norm_txt(z)} {norm_txt(d)}"))
                      for z, d in zip(out["zona"], out["zona_desc"])]
+    if tipo != "AFECTACION":
+        m = out["riesgo"] & (out["fuente"] != "PRI_ENV")
+        out.loc[m, "rango"] = 3
+        out.loc[m, "revisar"] = False
 
     # zone_overrides "<ipt_nombre>|<zona>" (validados por el arquitecto) ganan sobre pri_subclase
     zov = {_clave_zona(*k.split("|", 1)): v for k, v in (cfg.get("zone_overrides") or {}).items()}

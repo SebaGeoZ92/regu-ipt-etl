@@ -69,7 +69,8 @@ def _solo_poligonos(g):
 
 
 def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.GeoDataFrame,
-                      grid: float, min_area: float) -> tuple[list[dict], dict]:
+                      grid: float, min_area: float,
+                      riesgos: gpd.GeoDataFrame | None = None) -> tuple[list[dict], dict]:
     restante = _solo_poligonos(shapely.make_valid(geom)) or shapely.Polygon()
     if grid:
         restante = shapely.set_precision(restante, grid)
@@ -116,8 +117,44 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
             "revisar": False, "riesgo": False, "cut": cut, "comuna": nombre, "region": region,
             "clase": "R2", "fuente": "SIN_IPT", "geometry": restante})
 
+    filas = _marcar_riesgo(filas, geom, riesgos, grid, min_area)
     qa["instrumentos"] = "; ".join(sorted(qa["instrumentos"]))
     return filas, qa
+
+
+def _marcar_riesgo(filas: list[dict], geom, riesgos: gpd.GeoDataFrame | None,
+                   grid: float, min_area: float) -> list[dict]:
+    """Riesgo como superposición: corta cada pieza contra la unión de los polígonos de riesgo de la comuna
+    (todas las fuentes) y marca riesgo=True en la parte interior. La clase no cambia. Si una de las dos
+    partes queda bajo min_area no se corta (no se pierde cobertura)."""
+    for f in filas:
+        f["riesgo"] = False
+    if riesgos is None or riesgos.empty:
+        return filas
+    idx = riesgos.sindex.query(geom, predicate="intersects")
+    if not len(idx):
+        return filas
+    zona_r = _solo_poligonos(shapely.intersection(
+        shapely.union_all(riesgos.geometry.values[idx], grid_size=grid), geom, grid_size=grid))
+    if zona_r is None or zona_r.area < min_area:
+        return filas
+    out = []
+    for f in filas:
+        g = f["geometry"]
+        if not g.intersects(zona_r):
+            out.append(f)
+            continue
+        dentro = _solo_poligonos(shapely.intersection(g, zona_r, grid_size=grid))
+        fuera = _solo_poligonos(shapely.difference(g, zona_r, grid_size=grid))
+        a_in = dentro.area if dentro is not None else 0.0
+        a_out = fuera.area if fuera is not None else 0.0
+        if a_in < min_area:
+            out.append(f)
+        elif a_out < min_area:
+            out.append(f | {"riesgo": True})
+        else:
+            out += [f | {"geometry": fuera}, f | {"geometry": dentro, "riesgo": True}]
+    return out
 
 
 def recortar_afectaciones(afect: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, cfg: dict,
@@ -153,14 +190,19 @@ def instrumentos_sin_comuna(fuentes: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame
 
 
 def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
-               f_cut: str, f_nom: str, f_reg: str) -> tuple[gpd.GeoDataFrame, list[dict]]:
+               f_cut: str, f_nom: str, f_reg: str,
+               riesgos: gpd.GeoDataFrame | None = None) -> tuple[gpd.GeoDataFrame, list[dict]]:
+    """riesgos: polígonos de riesgo de todas las fuentes (zonas de riesgo de PRC/PRI y capas AFECTACION
+    de riesgo); se superponen a la partición y marcan riesgo=True sin cambiar la clase."""
     crs_t = cfg["crs"]["trabajo"]
     grid = float(cfg["build"]["grid_m"]) or None
     min_area = float(cfg["build"]["min_area_m2"])
     comunas = comunas.to_crs(crs_t)
     fuentes = fuentes.to_crs(crs_t).reset_index(drop=True)
-    # Traslapes internos de una fuente: primero 'rango' (PRI: subclase explícita > revisar > pri_default),
-    # luego lo más específico (menor área)
+    if riesgos is not None and not riesgos.empty:
+        riesgos = riesgos[["geometry"]].to_crs(crs_t).reset_index(drop=True)
+    # Traslapes internos de una fuente: primero 'rango' (subclase explícita > revisar > pri_default
+    # > zona de riesgo > envolvente), luego lo más específico (menor área)
     rango = fuentes["rango"].fillna(0) if "rango" in fuentes else 0
     fuentes = (fuentes.assign(_r=rango, _a=fuentes.area).sort_values(["_r", "_a"])
                .drop(columns=["_r", "_a"]).reset_index(drop=True))
@@ -168,7 +210,7 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
     todas, qas = [], []
     for _, c in comunas.iterrows():
         filas, qa = clasificar_comuna(str(c[f_cut]), c[f_nom], c[f_reg], c.geometry,
-                                      fuentes, grid, min_area)
+                                      fuentes, grid, min_area, riesgos)
         todas.extend(filas)
         qas.append(qa)
         log.info("%s %-22s %3d piezas · %s", c[f_cut], c[f_nom], len(filas), qa["instrumentos"] or "sin IPT")
@@ -183,6 +225,7 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
     capa_a = capa.to_crs(cfg["crs"]["area"])
     union_com = {cut: shapely.union_all(g.values).area for cut, g in capa_a.groupby("cut").geometry}
     suma_com = capa.groupby("cut")["area_m2"].sum()
+    riesgo_com = capa[capa["riesgo"].astype(bool)].groupby("cut")["area_m2"].sum()
     for qa in qas:
         tot = float(area_com.get(qa["cut"], np.nan))
         fila = resumen.loc[qa["cut"]] if qa["cut"] in resumen.index else None
@@ -191,6 +234,7 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
             qa[f"pct_{cl}"] = round(100 * v / tot, 3) if tot else None
         cubierto = float(fila.sum()) if fila is not None else 0.0
         qa["cobertura_pct"] = round(100 * cubierto / tot, 3) if tot else None
+        qa["pct_riesgo"] = round(100 * float(riesgo_com.get(qa["cut"], 0.0)) / tot, 3) if tot else None
         qa["traslape_m2"] = round(max(0.0, float(suma_com.get(qa["cut"], 0.0)) - union_com.get(qa["cut"], 0.0)), 1)
         qa["sin_urbano"] = (qa["pct_U1"] or 0) + (qa["pct_U2"] or 0) + (qa["pct_U3"] or 0) == 0
     capa.insert(0, "id", [f"{c}-{i:05d}" for i, c in enumerate(capa["cut"])])
