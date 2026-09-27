@@ -177,7 +177,14 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
         out["fuente"] = tipo
         out["revisar"] = False
 
-    # zone_overrides "<ipt_nombre>|<zona>" (validados por el arquitecto) ganan sobre pri_subclase
+    # Zonas de riesgo dentro de capas de zonificación (PRC/PRI/...) van a afectaciones, no a la partición
+    pat = cfg.get("zona_afectacion")
+    if pat and tipo != "AFECTACION":
+        m = [bool(re.search(pat, f"{norm_txt(z)} {norm_txt(d)}")) for z, d in zip(out["zona"], out["zona_desc"])]
+        out.loc[m, "fuente"] = "AFECTACION"
+        out.loc[m, "revisar"] = False
+
+    # zone_overrides "<ipt_nombre>|<zona>" (validados por el arquitecto) ganan sobre pri_subclase y zona_afectacion
     zov = {_clave_zona(*k.split("|", 1)): v for k, v in (cfg.get("zone_overrides") or {}).items()}
     if zov:
         for i, (nom, z) in zip(out.index, zip(out["ipt_nombre"], out["zona"])):

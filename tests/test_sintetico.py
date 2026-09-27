@@ -39,6 +39,7 @@ def _escenario(tmp: Path):
             ({"ZONA": "ZU-1", "DESCRIPCION": "Zona urbana central"}, box(-72.65, -38.75, -72.58, -38.68)),
             ({"ZONA": "ZU-2", "DESCRIPCION": "Zona mixta"}, box(-72.60, -38.72, -72.48, -38.66)),  # traslapa ZU-1 y desborda a PLC
             ({"ZONA": "ZU-3", "DESCRIPCION": "Zona contenida"}, box(-72.64, -38.74, -72.62, -38.72)),  # contenida en ZU-1
+            ({"ZONA": "AR-2", "DESCRIPCION": "Área de riesgo por remoción en masa"}, box(-72.59, -38.71, -72.585, -38.705)),
         ],
         # Mismo LU publicado en Limites_Urbanos y en PRC_Araucania (geometría idéntica)
         ("IPT/Limites_Urbanos", 0, "Limite_Urbano_Padre_Las_Casas"): [
@@ -55,6 +56,7 @@ def _escenario(tmp: Path):
             ({"ZONA": "ZR-2", "DESCRIPCION": "Zona rural silvoagropecuaria"}, box(-72.9, -38.8, -72.8, -38.7)),
             ({"ZONA": "ZR-3", "DESCRIPCION": "Zona rural de protección"}, box(-72.85, -38.75, -72.75, -38.65)),  # traslapa ZR-2
             ({"ZONA": "ZX", "DESCRIPCION": "Zona especial"}, box(-72.45, -38.66, -72.35, -38.62)),
+            ({"ZONA": "Riesgo aluvión", "DESCRIPCION": None}, box(-72.88, -38.79, -72.86, -38.77)),  # dentro de ZR-2
         ],
         ("IPT/PRC_Araucania", 3, "PRC_Temuco_Riesgo"): [
             ({"ZONA": "AR-1", "DESCRIPCION": "Riesgo inundación"}, box(-72.62, -38.74, -72.60, -38.72)),
@@ -97,6 +99,10 @@ def test_end_to_end():
         fuentes = gpd.GeoDataFrame(pd.concat(fuentes, ignore_index=True), crs=4326)
         assert set(fuentes["fuente"]) == {"PRC", "SECCIONAL", "LU", "PRI_E", "PRI_R"}
         assert fuentes.loc[fuentes.zona == "ZX", "revisar"].item() is True
+        # Zonas de RIESGO dentro de PRC y PRI van a afectaciones, no a la partición
+        zonas_af = set(pd.concat(afect).zona)
+        assert {"AR-2", "Riesgo aluvión"} <= zonas_af
+        assert not ({"AR-2", "Riesgo aluvión"} & set(fuentes.zona))
 
         # zone_overrides gana sobre pri_subclase; AFECTACION saca la zona de la partición
         e_pri, p_pri = next((e, p) for e, p in catalogo if e["layer_name"] == "PRI_Temuco_PLC")
@@ -104,7 +110,7 @@ def test_end_to_end():
         part, af = separar_afectaciones(load_layer(p_pri, e_pri, cfg_zo, res), e_pri["tipo"])
         zx = part[part.zona == "ZX"].iloc[0]
         assert zx["fuente"] == "PRI_E" and not zx["revisar"]
-        assert list(af.zona) == ["ZR-3"] and "ZR-3" not in set(part.zona)
+        assert set(af.zona) == {"ZR-3", "Riesgo aluvión"} and "ZR-3" not in set(part.zona)
 
         capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION")
 

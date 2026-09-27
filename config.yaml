@@ -68,7 +68,11 @@ zone_fields: [ZONA, ZONIFICACION, ZONIFICACI, NOM_ZONA, NOMBRE_ZONA, ZONA_PRC, C
 zone_desc_fields: [DESCRIPCION, DESCRIPCIO, DESCRIP, NOMBRE_ZONA, NOM_ZONA, USO, USO_SUELO, DETALLE, OBS]
 comuna_fields: [CUT, CUT_COM, COD_COMUNA, COMUNA, NOM_COMUNA, NOM_COM, NOMBRE_COM, COM]   # COM: esquema MINVU reciente (REG/COM/LOC/ZONA/NOM)
 
-# Tipificación manual de zonas, con prioridad sobre pri_subclase: "<ipt_nombre>|<zona>": E | U | R | AFECTACION
+# Zonas que van a la capa afectaciones aunque vengan en una capa de zonificación (PRC, PRI, PRM, seccional).
+# Regex sobre ZONA + DESCRIPCIÓN, en mayúsculas sin tildes. zone_overrides gana sobre esto.
+zona_afectacion: "RIESGO"
+
+# Tipificación manual de zonas, con prioridad sobre pri_subclase y zona_afectacion: "<ipt_nombre>|<zona>": E | U | R | AFECTACION
 # ipt_nombre y zona tal como salen en capa_ipt (se comparan sin tildes, mayúsculas ni guiones).
 # E/U/R solo aplican a PRI/PRM; AFECTACION saca la zona de la partición (PRI, PRM o PRC).
 # PENDIENTE: lo llena el arquitecto para el PRI Lago Villarrica (zonas con revisar=True).
