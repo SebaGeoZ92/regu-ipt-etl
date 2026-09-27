@@ -15,19 +15,29 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 3. U2: Límite Urbano sin PRC
 4. U3: zona urbana de PRI/PRM
 5. E: extensión urbana de PRI/PRM
-6. R1: zona rural de PRI/PRM (+ art. 55 LGUC)
+6. R1: zona rural de PRI/PRM (+ art. 55 LGUC); después, `PRI_ENV` (contorno PRI sin zonificación)
 7. R2: remanente rural sin IPT (art. 55 LGUC + DL 3.516)
 
 `legal_refs.json` está en **BORRADOR**: el arquitecto debe validarlo antes de publicar.
 
+## Decisiones de modelado (27-sep-2026, validadas por Seba)
+
+- **Traslapes dentro de una fuente**: resta secuencial con `intersects` (no `overlaps`, que no ve contención ni igualdad). Orden: `rango` y luego menor área. En PRI el `rango` es: subclase explícita o `zone_override` (0) > `revisar` (1) > `pri_default` (2) > envolvente (3).
+- **Envolventes PRI** (`pri_envolvente` en config: `PRI_Area_Rural`, "Unidad Territorial A/B/C" de `PRI_Araucanía`): fuente `PRI_ENV`, clase R1, ordenada después de `PRI_R`. Solo llenan lo que la zonificación PRI no cubre.
+- **Zonas de riesgo** (`zona_riesgo`, regex sobre ZONA + descripción): **no salen de la partición**. Conservan la clase de su instrumento con `riesgo=True` y además se copian a `afectaciones`. Nunca deben producir R2 dentro de un PRC o PRI.
+- **`zone_overrides`** `"<ipt_nombre>|<zona>": E|U|R|AFECTACION`: ganan sobre `pri_subclase`. Los llena el arquitecto (pendiente: PRI Lago Villarrica). AFECTACION saca la zona de la partición.
+- **Comuna de instrumentos comunales, en cascada**: `comuna_fields` (COM…) → ADMIN sin "Municipalidad de " → NOM sin "Límite urbano de " (ambos solo si traen el prefijo) → `comuna_alias` → nombre de capa. Lo que no resuelve queda en `qa_sin_comuna_<tag>.csv`, porque sin CUT el instrumento puede normar la comuna vecina.
+- **Afectaciones**: `build` las recorta a las comunas procesadas y les asigna `cut` y `comuna`.
+- **Capas superpuestas de PRC** (ZNE, ICH, ZCH, AR, restricción) se tipifican como AFECTACION, porque como PRC extendían U1.
+
 ## Arquitectura
 
-- `run.py`: CLI con los comandos `discover | catalogo | download | build | all`, más `--region`, `--refresh` y `--postgis`.
+- `run.py`: CLI con los comandos `discover | catalogo | download | build | all`, más `--region`, `--refresh` y `--postgis`. `--region` filtra `discover` y `download` por la extensión del servicio (`service_extent`), y `build` por comunas.
 - `etl/arcgis.py`: cliente de geoide.minvu.cl con reintentos, paginación por offset u objectIds, y caché en disco.
-- `etl/normalize.py`: reglas de tipificación (override > service_rules > layer_rules), dedupe MapServer/FeatureServer, homologación de campos y ComunaResolver (nombre de plan → CUT).
-- `etl/classify.py`: partición por comuna. Overlays en ESRI:102033, sin snapping (`grid_m: 0`), porque el snapping generaba astillas entre comunas.
-- `etl/export.py`: GPKG (`capa_ipt` + `afectaciones`), GeoJSON RFC7946 nacional y por región, CSV de QA, resumen JSON y carga opcional a PostGIS.
-- `tests/test_sintetico.py`: escenario Temuco / Padre Las Casas / Carahue + paginación simulada. **Debe pasar siempre.**
+- `etl/normalize.py`: reglas de tipificación (override > service_rules > layer_rules), dedupe MapServer/FeatureServer y homologación de campos. También ComunaResolver con cascada (`cut_por_cascada`), `pri_envolvente`, `zona_riesgo`, `zone_overrides` y `separar_afectaciones`.
+- `etl/classify.py`: partición por comuna. Overlays en ESRI:102033, sin snapping (`grid_m: 0`), porque el snapping generaba astillas entre comunas. Los índices de `sindex.query` se ordenan para respetar el orden rango/área de las fuentes. Además: `recortar_afectaciones` e `instrumentos_sin_comuna`.
+- `etl/export.py`: GPKG (`capa_ipt` con `riesgo`, más `afectaciones` con `cut`), GeoJSON RFC7946 nacional y por región, CSV de QA (`qa_comunas` con `traslape_m2`, y `qa_sin_comuna`), resumen JSON (cobertura mín/máx, traslape máx, instrumentos sin comuna) y carga opcional a PostGIS.
+- `tests/test_sintetico.py`: escenario Temuco / Padre Las Casas / Carahue con LU duplicado, zona contenida, PRI traslapados, envolvente PRI, zonas de riesgo en PRC y PRI, COM mal escrito y afectaciones recortadas, más paginación simulada. Exige cobertura de 100% ± 0,01 y traslape < 1 m² en **cada** comuna. **Debe pasar siempre.**
 
 ## Hechos verificados del servidor MINVU (26-sep-2026)
 
@@ -36,6 +46,11 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 - `PRC_Nuble` y `PRC_Ñuble` están duplicados. Hoy se ignora `PRC_Nuble`. **PENDIENTE verificar cuál está vigente.**
 - El servidor es inestable (errores del Web Adaptor): se trabaja siempre sobre el caché `data/raw`.
 - MaxRecordCount 2000. Los SRID de origen varían por servicio; se pide `outSR=4326`.
+- Esquema reciente de capas: REG/COM/LOC/ZONA/NOM. `COM` trae errores de tipeo ("Padre de Las Casas", "Teodoro Schmitdt"); ADMIN y NOM vienen bien.
+- El mismo LU está publicado en `Limites_Urbanos/0` y en `PRC_<Región>` (geometría idéntica).
+- Hay extensiones de servicio infladas: PRC_OHiggins, PRC_Valparaíso, PRI_Antofagasta y PRI_Coquimbo cruzan el bbox de Araucanía.
+- `PRC_Valparaíso/72` (`PRC_LosAndes_ICH`) trae datos de Limache.
+- Varias capas de servicios PRI/PRMS son de riesgo, LU o vialidad (p.ej. `PRMS_Riesgo`, `PRMS_LU`, `PRI_Valparaiso/Límite Urbano`), pero `service_rules` las tipifica como PRI/PRM. **PENDIENTE revisarlas antes de la escala nacional.**
 
 ## Base comunal
 
@@ -43,10 +58,12 @@ BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comuna
 
 ## Estado y próximos pasos
 
-1. [ ] `python run.py catalogo`: revisar la lista de capas IGNORADAS y ajustar `service_rules`, `layer_rules` y `overrides`.
-2. [ ] Piloto: `python run.py download --region ARAUCANIA` y luego `python run.py build --region ARAUCANIA`.
-3. [ ] QA piloto: ninguna comuna con PRC conocido debe salir `sin_urbano=True`, la cobertura debe ser 100% y hay que revisar las zonas PRI con `revisar=True` y sus patrones `pri_subclase`.
-4. [ ] Revisar a mano los nombres de capa PRC que no resuelven comuna (`cut_ipt` vacío).
+1. [x] `python run.py catalogo`: ajustadas las capas IGNORADAS. Quedan ignorados a propósito `PRC_Nuble` y los PRDU.
+2. [x] Piloto: `python run.py download --region ARAUCANIA` y luego `python run.py build --region ARAUCANIA`.
+3. [ ] QA piloto (27-sep-2026): 32 comunas, cobertura 100% en todas, traslape máx 1,1 m² (ruido numérico), 0 instrumentos sin comuna. Pendiente:
+   - **Lumaco** sale `sin_urbano=True`: MINVU no publica PRC ni LU. Confirmar con el arquitecto o la DOM.
+   - 14 zonas del PRI Lago Villarrica con `revisar=True` (Zona de vivienda, hoteleras, camping, etc.; hoy quedan en R1 por defecto). El arquitecto debe llenar `zone_overrides`.
+4. [x] Nombres PRC/LU que no resuelven comuna: se resuelven con la cascada. Revisar `qa_sin_comuna_<tag>.csv` en cada región.
 5. [ ] Escalar a nivel nacional.
 6. [ ] Siguiente fase: cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
 
