@@ -22,10 +22,16 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 
 ## Decisiones de modelado (27-sep-2026, validadas por Seba)
 
-- **Traslapes dentro de una fuente**: resta secuencial con `intersects` (no `overlaps`, que no ve contención ni igualdad). Orden: `rango` y luego menor área. En PRI el `rango` es: subclase explícita o `zone_override` (0) > `revisar` (1) > `pri_default` (2) > envolvente (3).
+- **Traslapes dentro de una fuente**: resta secuencial con `intersects` (no `overlaps`, que no ve contención ni igualdad). Orden: `rango` y luego menor área. El `rango` es: subclase explícita o `zone_override` (0) > `revisar` (1) > `pri_default` (2) > zona de riesgo (3) > envolvente (4).
+- **Umbral de traslape** por comuna: `traslape_m2 < max(1, 1e-6 × área de la comuna)`, igual en el QA (`traslape_ok`) y en el test.
 - **Envolventes PRI** (`pri_envolvente` en config: `PRI_Area_Rural`, "Unidad Territorial A/B/C" de `PRI_Araucanía`): fuente `PRI_ENV`, clase R1, ordenada después de `PRI_R`. Solo llenan lo que la zonificación PRI no cubre.
-- **Zonas de riesgo** (`zona_riesgo`, regex sobre ZONA + descripción): **no salen de la partición**. Conservan la clase de su instrumento con `riesgo=True` y además se copian a `afectaciones`. Nunca deben producir R2 dentro de un PRC o PRI.
-- **`zone_overrides`** `"<ipt_nombre>|<zona>": E|U|R|AFECTACION`: ganan sobre `pri_subclase`. Los llena el arquitecto (pendiente: PRI Lago Villarrica). AFECTACION saca la zona de la partición.
+- **Riesgo como superposición, no como competidor** (`zona_riesgo`, regex sobre ZONA + descripción o sobre el nombre de la capa):
+  - Las zonas de riesgo van con rango 3 y `revisar=False`, y se copian a `afectaciones`.
+  - Después de la partición de cada comuna, cada pieza se corta contra la unión de todos los polígonos de riesgo de la comuna, incluidas las capas AFECTACION de riesgo. La parte interior sale con `riesgo=True` y conserva la clase y la zona base. Nunca deben producir R2 dentro de un PRC o PRI.
+- **`zone_overrides`** `"<ipt_nombre>|<zona>": E|U|R|AFECTACION`: ganan sobre `pri_subclase`. AFECTACION saca la zona de la partición. Flujo con el arquitecto:
+  - `build` genera `data/out/revision_arquitecto.csv`, una fila por zona con `revisar=True` y la columna `decision` vacía; conserva las decisiones ya llenas.
+  - `python run.py importar-revision <csv>` las lleva a `zone_overrides`.
+- **`layer_rules_prioritarias`** se evalúan antes de `service_rules`, salvo en servicios IGNORAR. Solo patrones inequívocos: riesgo, patrimonio, zona típica y vialidad → AFECTACION; límite urbano → LU.
 - **Comuna de instrumentos comunales, en cascada**: `comuna_fields` (COM…) → ADMIN sin "Municipalidad de " → NOM sin "Límite urbano de " (ambos solo si traen el prefijo) → `comuna_alias` → nombre de capa. Lo que no resuelve queda en `qa_sin_comuna_<tag>.csv`, porque sin CUT el instrumento puede normar la comuna vecina.
 - **Afectaciones**: `build` las recorta a las comunas procesadas y les asigna `cut` y `comuna`.
 - **Capas superpuestas de PRC** (ZNE, ICH, ZCH, AR, restricción) se tipifican como AFECTACION, porque como PRC extendían U1.
@@ -50,7 +56,8 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 - El mismo LU está publicado en `Limites_Urbanos/0` y en `PRC_<Región>` (geometría idéntica).
 - Hay extensiones de servicio infladas: PRC_OHiggins, PRC_Valparaíso, PRI_Antofagasta y PRI_Coquimbo cruzan el bbox de Araucanía.
 - `PRC_Valparaíso/72` (`PRC_LosAndes_ICH`) trae datos de Limache.
-- Varias capas de servicios PRI/PRMS son de riesgo, LU o vialidad (p.ej. `PRMS_Riesgo`, `PRMS_LU`, `PRI_Valparaiso/Límite Urbano`), pero `service_rules` las tipifica como PRI/PRM. **PENDIENTE revisarlas antes de la escala nacional.**
+- Varias capas de servicios PRI/PRMS son de riesgo, LU o vialidad. `layer_rules_prioritarias` corrige 11 de ellas. `PRMS_LU`, `PRMS_Resguardo_*` y `PRI_Valparaiso/Área Protección cultural_pto` siguen como PRI/PRM: **PENDIENTE**.
+- `PRC_Temuco_Areas_de_proteccion_y_riesgo` mezcla zonas de protección (APP 1, APP 3) con zonas de riesgo (ARC, ARI, ARP, ARRI), y la misma geometría está en `IPT_AREA_RIESGO/PRC_Area_de_Riesgo`. Un área de riesgo del PRC de Temuco se desborda 88 ha hacia Padre Las Casas. **PENDIENTE decidir**: excluir APP del riesgo y filtrar las afectaciones de PRC por comuna.
 
 ## Base comunal
 
@@ -62,7 +69,7 @@ BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comuna
 2. [x] Piloto: `python run.py download --region ARAUCANIA` y luego `python run.py build --region ARAUCANIA`.
 3. [ ] QA piloto (27-sep-2026): 32 comunas, cobertura 100% en todas, traslape máx 1,1 m² (ruido numérico), 0 instrumentos sin comuna. Pendiente:
    - **Lumaco** sale `sin_urbano=True`: MINVU no publica PRC ni LU. Confirmar con el arquitecto o la DOM.
-   - 14 zonas del PRI Lago Villarrica con `revisar=True` (Zona de vivienda, hoteleras, camping, etc.; hoy quedan en R1 por defecto). El arquitecto debe llenar `zone_overrides`.
+   - 8 zonas del PRI Lago Villarrica con `revisar=True` (Zona de vivienda, hoteleras, camping, etc.; hoy quedan en R1 por defecto). El arquitecto debe llenar `data/out/revision_arquitecto.csv` y luego se corre `importar-revision`.
 4. [x] Nombres PRC/LU que no resuelven comuna: se resuelven con la cascada. Revisar `qa_sin_comuna_<tag>.csv` en cada región.
 5. [ ] Escalar a nivel nacional.
 6. [ ] Siguiente fase: cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
