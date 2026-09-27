@@ -45,6 +45,12 @@ service_rules:
   - {pattern: "/(PRMS|PRMC|PREMVAL)$", tipo: PRM}
   - {pattern: "/PRI_", tipo: PRI}
 
+# Capas PRI que solo son el contorno del área normada (sin zonificación propia): fuente PRI_ENV, clase R1,
+# después de toda la zonificación PRI. Regex sobre "<servicio>/<nombre de capa>".
+pri_envolvente:
+  - "/PRI_Area_Rural/"                                 # Límite área rural PRI
+  - "/PRI_Araucan[ií]a/Unidad Territorial [A-Z]$"      # duplican la zonificación del PRI Villarrica-Pucón
+
 # Tipo de capa según su NOMBRE (servicios no cubiertos arriba, p.ej. PRC_<Región>). Se evalúa en orden; gana la primera coincidencia.
 layer_rules:
   - {pattern: "(riesgo|patrimon|inund|remoci|tsunami|zona_?t[ií]pica|afecta|vialidad)", tipo: AFECTACION}

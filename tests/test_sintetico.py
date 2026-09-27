@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from etl.arcgis import raw_path  # noqa: E402
 from etl.classify import clasificar  # noqa: E402
 from etl.export import anotar_legal, escribir  # noqa: E402
-from etl.normalize import ComunaResolver, load_layer, separar_afectaciones, tipo_capa  # noqa: E402
+from etl.normalize import ComunaResolver, aplicar_reglas, load_layer, separar_afectaciones  # noqa: E402
 
 REG = "Región de La Araucanía"
 
@@ -58,6 +58,10 @@ def _escenario(tmp: Path):
             ({"ZONA": "ZX", "DESCRIPCION": "Zona especial"}, box(-72.45, -38.66, -72.35, -38.62)),
             ({"ZONA": "Riesgo aluvión", "DESCRIPCION": None}, box(-72.88, -38.79, -72.86, -38.77)),  # dentro de ZR-2
         ],
+        # Contorno del área rural PRI (envolvente): no debe tapar la zonificación PRI de Carahue
+        ("IPT/PRI_Area_Rural", 0, "Límite área rural PRI"): [
+            ({"ZONA": "UNIDAD TERRITORIAL C"}, box(-72.9, -38.8, -72.72, -38.62)),
+        ],
         ("IPT/PRC_Araucania", 3, "PRC_Temuco_Riesgo"): [
             ({"ZONA": "AR-1", "DESCRIPCION": "Riesgo inundación"}, box(-72.62, -38.74, -72.60, -38.72)),
         ],
@@ -67,7 +71,7 @@ def _escenario(tmp: Path):
     catalogo = []
     for (srv, lid, nombre), feats in capas.items():
         e = {"service": srv, "layer_id": lid, "layer_name": nombre, "url": f"https://x/{srv}/MapServer/{lid}"}
-        e["tipo"] = tipo_capa(e, cfg["layer_rules"], {})
+        e = aplicar_reglas(e, cfg)   # override > service_rules > layer_rules, como en el catálogo real
         p = raw_path(raw, e)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(json.dumps(_fc(feats)), encoding="utf-8")
@@ -82,7 +86,7 @@ def test_end_to_end():
         tipos = {e["layer_name"]: e["tipo"] for e, _ in catalogo}
         assert tipos == {"PRC_Temuco": "PRC", "Seccional_Temuco_Labranza": "SECCIONAL",
                          "Limite_Urbano": "LU", "Limite_Urbano_Padre_Las_Casas": "LU",
-                         "PRI_Temuco_PLC": "PRI", "PRC_Temuco_Riesgo": "AFECTACION"}
+                         "PRI_Temuco_PLC": "PRI", "Límite área rural PRI": "PRI", "PRC_Temuco_Riesgo": "AFECTACION"}
 
         res = ComunaResolver(comunas, "CUT_COM", "COMUNA")
         assert res.resolve("Temuco Labranza") == "09101"
@@ -97,7 +101,7 @@ def test_end_to_end():
                 afect.append(af)
         import pandas as pd
         fuentes = gpd.GeoDataFrame(pd.concat(fuentes, ignore_index=True), crs=4326)
-        assert set(fuentes["fuente"]) == {"PRC", "SECCIONAL", "LU", "PRI_E", "PRI_R"}
+        assert set(fuentes["fuente"]) == {"PRC", "SECCIONAL", "LU", "PRI_E", "PRI_R", "PRI_ENV"}
         assert fuentes.loc[fuentes.zona == "ZX", "revisar"].item() is True
         # Zonas de RIESGO dentro de PRC y PRI van a afectaciones, no a la partición
         zonas_af = set(pd.concat(afect).zona)
@@ -137,6 +141,11 @@ def test_end_to_end():
         # 4. Carahue: rural PRI + rural sin IPT; sin urbano
         assert {"R1", "R2"} == set(capa[capa.cut == "09102"].clase)
         assert q["09102"]["sin_urbano"] is True
+        # 5. La envolvente PRI solo llena lo que la zonificación PRI no cubre
+        car = capa[capa.cut == "09102"]
+        zr2 = car[car.zona == "ZR-2"]
+        assert len(zr2) == 1 and zr2.fuente.item() == "PRI_R" and abs(zr2.area_m2.item() - 96502624.8) < 1
+        assert "PRI_ENV" in set(car.fuente) and not car[car.fuente == "PRI_ENV"].revisar.any()
 
         legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
         capa = anotar_legal(capa, legal)

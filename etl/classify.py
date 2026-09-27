@@ -25,6 +25,7 @@ ORDEN = [
     ("U3", "PRI_U"),
     ("E", "PRI_E"),
     ("R1", "PRI_R"),
+    ("R1", "PRI_ENV"),   # contorno PRI sin zonificación: solo llena lo que la zonificación PRI no cubre
 ]
 CAMPOS = ["ipt_tipo", "ipt_nombre", "servicio", "capa", "zona", "zona_desc",
           "attrs_raw", "fuente_url", "fecha_extraccion", "revisar"]
@@ -124,8 +125,11 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
     min_area = float(cfg["build"]["min_area_m2"])
     comunas = comunas.to_crs(crs_t)
     fuentes = fuentes.to_crs(crs_t).reset_index(drop=True)
-    # Instrumentos del mismo tipo: los PRC más específicos (menor área) ganan en traslapes internos
-    fuentes = fuentes.assign(_a=fuentes.area).sort_values("_a").drop(columns="_a").reset_index(drop=True)
+    # Traslapes internos de una fuente: primero 'rango' (PRI: subclase explícita > revisar > pri_default),
+    # luego lo más específico (menor área)
+    rango = fuentes["rango"].fillna(0) if "rango" in fuentes else 0
+    fuentes = (fuentes.assign(_r=rango, _a=fuentes.area).sort_values(["_r", "_a"])
+               .drop(columns=["_r", "_a"]).reset_index(drop=True))
 
     todas, qas = [], []
     for _, c in comunas.iterrows():

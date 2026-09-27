@@ -167,15 +167,20 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
     if tipo == "LU":
         out["ipt_nombre"] = [f"Límite Urbano {resolver.nombre.get(c, '')}".strip() for c in out["cut_ipt"]]
 
-    # Fuente de clasificación
+    # Fuente de clasificación. 'rango' ordena el área disputada dentro de una misma fuente PRI:
+    # 0 subclase explícita (o zone_override) > 1 revisar > 2 pri_default > 3 envolvente (PRI_ENV)
     if tipo in INTERCOMUNALES:
         subs = [pri_subclase(z, d, cfg["pri_subclase"]) for z, d in zip(out["zona"], out["zona_desc"])]
         defecto = entry.get("pri_default")
         out["fuente"] = [f"PRI_{s or defecto or 'R'}" for s in subs]
         out["revisar"] = [s is None and not defecto for s in subs]
+        out["rango"] = [0 if s else (2 if defecto else 1) for s in subs]
+        if es_envolvente(entry, cfg):
+            out["fuente"], out["revisar"], out["rango"] = "PRI_ENV", False, 3
     else:
         out["fuente"] = tipo
         out["revisar"] = False
+        out["rango"] = 0
 
     # Zonas de riesgo dentro de capas de zonificación (PRC/PRI/...) van a afectaciones, no a la partición
     pat = cfg.get("zona_afectacion")
@@ -195,10 +200,17 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
                 out.at[i, "fuente"] = "AFECTACION"
             elif tipo in INTERCOMUNALES:
                 out.at[i, "fuente"] = f"PRI_{v}"
+                out.at[i, "rango"] = 0
             else:
                 continue
             out.at[i, "revisar"] = False
     return out
+
+
+def es_envolvente(entry: dict, cfg: dict) -> bool:
+    """Capa PRI que solo dibuja el contorno del área normada (sin zonificación propia)."""
+    clave = f"{entry['service']}/{entry['layer_name']}"
+    return any(re.search(p, clave, re.I) for p in cfg.get("pri_envolvente") or [])
 
 
 def _clave_zona(nombre, zona) -> str:
