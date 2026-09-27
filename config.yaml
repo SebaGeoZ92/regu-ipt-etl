@@ -13,13 +13,13 @@ arcgis:
 paths:
   raw: data/raw        # caché de descargas (una vez bajado, no se vuelve a pedir)
   out: data/out
-  comunas: data/base/comunas.gpkg   # DPA nacional (BCN o IDE Chile), polígonos comunales
+  comunas: data/base/comunas_bcn/comunas.shp   # BCN SIIT, División comunal (346 comunas, EPSG:3857)
 
 comunas:
   layer: null          # nombre de capa si el archivo tiene varias
-  field_cut: CUT_COM
-  field_nombre: COMUNA
-  field_region: REGION
+  field_cut: cod_comuna    # entero de 4-5 dígitos; se normaliza a 5 (9101 -> 09101)
+  field_nombre: Comuna
+  field_region: Region      # ej. 'Región de La Araucanía'
 
 crs:
   trabajo: ESRI:102033 # overlays en métrico y equivalente de área; sirve de Arica a Magallanes
@@ -32,7 +32,20 @@ build:
   incluir_attrs_raw_geojson: false   # el GPKG siempre las lleva
   precision_geojson: 6
 
-# Tipo de capa según su NOMBRE. Se evalúa en orden; gana la primera coincidencia.
+# Tipo de capa según el SERVICIO (se evalúa antes que layer_rules; gana la primera coincidencia).
+# pri_default: subclase para zonas PRI/PRM cuya sigla no calza con pri_subclase (E, R o U).
+service_rules:
+  - {pattern: "/IPT_AREA_RIESGO$", tipo: AFECTACION}
+  - {pattern: "/Patrimonio$", tipo: AFECTACION}
+  - {pattern: "/Limites_Urbanos$", tipo: LU}
+  - {pattern: "/PRDU_", tipo: IGNORAR}          # Plan Regional de Desarrollo Urbano: indicativo, no fija normas urbanísticas
+  - {pattern: "/PRC_Nuble$", tipo: IGNORAR}     # duplicado de PRC_Ñuble · VERIFICAR cuál está vigente
+  - {pattern: "/PRI_Extension_urbana$", tipo: PRI, pri_default: E}
+  - {pattern: "/PRI_Area_Rural$", tipo: PRI, pri_default: R}
+  - {pattern: "/(PRMS|PRMC|PREMVAL)$", tipo: PRM}
+  - {pattern: "/PRI_", tipo: PRI}
+
+# Tipo de capa según su NOMBRE (servicios no cubiertos arriba, p.ej. PRC_<Región>). Se evalúa en orden; gana la primera coincidencia.
 layer_rules:
   - {pattern: "(riesgo|patrimon|inund|remoci|tsunami|zona_?t[ií]pica|afecta|vialidad)", tipo: AFECTACION}
   - {pattern: "^(seccional|ps)[_ ]", tipo: SECCIONAL}
@@ -42,7 +55,7 @@ layer_rules:
   - {pattern: "^(prc|plan[_ ]regulador)", tipo: PRC}
   - {pattern: ".*", tipo: IGNORAR}
 
-# Correcciones manuales: "<servicio>/<id_capa>": TIPO
+# Correcciones manuales por capa (ganan sobre todo): "<servicio>/<id_capa>": TIPO
 overrides: {}
 #  "IPT/PRC_Atacama/8": AFECTACION
 

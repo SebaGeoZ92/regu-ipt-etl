@@ -3,6 +3,7 @@
 
 Uso:
   python run.py discover [--region ARAUCANIA]      # catálogo de servicios/capas MINVU
+  python run.py catalogo                           # re-aplica reglas de config.yaml al catálogo (sin red)
   python run.py download [--region ARAUCANIA] [--refresh]
   python run.py build    [--region ARAUCANIA] [--postgis]
   python run.py all      [--region ARAUCANIA] [--postgis]
@@ -25,7 +26,7 @@ from pyproj import Transformer
 from etl.arcgis import ArcGISClient, ArcGISError, discover, download_entry, raw_path
 from etl.classify import clasificar
 from etl.export import anotar_legal, cargar_postgis, escribir
-from etl.normalize import ComunaResolver, load_layer, norm_txt, tipo_capa
+from etl.normalize import ComunaResolver, load_layer, norm_txt, normalizar_catalogo
 
 ROOT = Path(__file__).parent
 log = logging.getLogger("regu-ipt")
@@ -87,27 +88,46 @@ def cmd_discover(cfg, args):
     comunas = cargar_comunas(cfg, args.region) if args.region else None
     filtro = filtro_por_extension(comunas) if comunas is not None else None
     cat = discover(cliente(cfg), cfg["arcgis"]["folders"], filtro)
-    for e in cat:
-        e["tipo"] = tipo_capa(e, cfg["layer_rules"], cfg.get("overrides") or {})
     p = catalogo_path(cfg)
     p.parent.mkdir(parents=True, exist_ok=True)
+    p.with_name("catalogo_bruto.json").write_text(json.dumps(cat, ensure_ascii=False, indent=2), encoding="utf-8")
+    guardar_catalogo(cfg, cat)
+
+
+def guardar_catalogo(cfg, bruto: list[dict]) -> list[dict]:
+    cat = normalizar_catalogo(bruto, cfg)
+    p = catalogo_path(cfg)
     p.write_text(json.dumps(cat, ensure_ascii=False, indent=2), encoding="utf-8")
+    campos = ["service", "layer_id", "layer_name", "tipo", "pri_default", "url", "service_wkid", "service_type"]
     with open(p.with_suffix(".csv"), "w", newline="", encoding="utf-8-sig") as fh:
-        w = csv.DictWriter(fh, fieldnames=["service", "layer_id", "layer_name", "tipo", "url", "service_wkid", "service_type"])
+        w = csv.DictWriter(fh, fieldnames=campos, extrasaction="ignore")
         w.writeheader()
         w.writerows(cat)
     tipos = pd.Series([e["tipo"] for e in cat]).value_counts().to_dict()
-    log.info("Catálogo: %d capas · %s · revisa %s", len(cat), tipos, p.with_suffix(".csv"))
+    log.info("Catálogo: %d capas (de %d brutas) · %s · %s", len(cat), len(bruto), tipos, p.with_suffix(".csv"))
+    return cat
+
+
+def cmd_catalogo(cfg, args):
+    p = catalogo_path(cfg).with_name("catalogo_bruto.json")
+    if not p.exists():
+        p = catalogo_path(cfg)  # catálogo de la versión anterior
+    if not p.exists():
+        sys.exit("No hay catálogo. Corre primero: python run.py discover")
+    cat = guardar_catalogo(cfg, json.loads(p.read_text(encoding="utf-8")))
+    ign = [e for e in cat if e["tipo"] == "IGNORAR"]
+    if ign:
+        print("\nCapas IGNORADAS (revisar si alguna debería entrar):")
+        for e in ign:
+            print(f"  {e['service']}/{e['layer_id']:<4} {e['layer_name']}")
 
 
 def leer_catalogo(cfg) -> list[dict]:
     p = catalogo_path(cfg)
     if not p.exists():
         sys.exit("No hay catálogo. Corre primero: python run.py discover")
-    cat = json.loads(p.read_text(encoding="utf-8"))
     # re-aplica reglas/overrides por si cambiaron en config.yaml
-    for e in cat:
-        e["tipo"] = tipo_capa(e, cfg["layer_rules"], cfg.get("overrides") or {})
+    cat = normalizar_catalogo(json.loads(p.read_text(encoding="utf-8")), cfg)
     return [e for e in cat if e["tipo"] != "IGNORAR"]
 
 
@@ -158,7 +178,7 @@ def cmd_build(cfg, args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["discover", "download", "build", "all"])
+    ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all"])
     ap.add_argument("--region", help="regex sobre el nombre de región (ej. ARAUCANIA)")
     ap.add_argument("--refresh", action="store_true", help="vuelve a descargar aunque exista caché")
     ap.add_argument("--postgis", action="store_true", help="carga a PostGIS (requiere DATABASE_URL)")
@@ -169,6 +189,8 @@ def main():
     cfg = cargar_cfg()
     if args.cmd in ("discover", "all"):
         cmd_discover(cfg, args)
+    if args.cmd == "catalogo":
+        cmd_catalogo(cfg, args)
     if args.cmd in ("download", "all"):
         cmd_download(cfg, args)
     if args.cmd in ("build", "all"):

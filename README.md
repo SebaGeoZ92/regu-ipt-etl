@@ -34,7 +34,8 @@ Necesitas una capa de **comunas nacional (DPA)** en `data/base/comunas.gpkg` (BC
 python run.py discover --region ARAUCANIA
 
 # 2. REVISAR data/raw/catalogo.csv: ¿cada capa quedó con el tipo correcto?
-#    Corrige con reglas (layer_rules) u overrides en config.yaml. No hace falta volver a descargar.
+#    Corrige con service_rules / layer_rules / overrides en config.yaml y re-aplica sin red:
+python run.py catalogo
 
 # 3. Descarga con caché (si el servidor se cae, vuelve a correr: lo bajado no se repite)
 python run.py download --region ARAUCANIA

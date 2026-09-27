@@ -32,6 +32,35 @@ def tipo_capa(entry: dict, rules: list[dict], overrides: dict) -> str:
     return "IGNORAR"
 
 
+def aplicar_reglas(entry: dict, cfg: dict) -> dict:
+    """Asigna tipo (y pri_default) a una capa: override > regla de servicio > regla de capa."""
+    key = f"{entry['service']}/{entry['layer_id']}"
+    entry["pri_default"] = None
+    overrides = cfg.get("overrides") or {}
+    if key in overrides:
+        entry["tipo"] = overrides[key]
+        return entry
+    for r in cfg.get("service_rules") or []:
+        if re.search(r["pattern"], entry["service"], re.I):
+            entry["tipo"] = r["tipo"]
+            entry["pri_default"] = r.get("pri_default")
+            return entry
+    entry["tipo"] = tipo_capa(entry, cfg["layer_rules"], {})
+    return entry
+
+
+def normalizar_catalogo(cat: list[dict], cfg: dict) -> list[dict]:
+    """Aplica reglas y elimina duplicados MapServer/FeatureServer (misma capa en ambos: gana MapServer)."""
+    vistos, out = {}, []
+    for e in sorted(cat, key=lambda e: (e["service"], e["layer_name"], e.get("service_type") != "MapServer")):
+        k = (e["service"], e["layer_name"])
+        if k in vistos:
+            continue
+        vistos[k] = True
+        out.append(aplicar_reglas(dict(e), cfg))
+    return out
+
+
 def nombre_ipt(layer_name: str) -> str:
     return _PREFIJO.sub("", layer_name).replace("_", " ").strip() or layer_name
 
@@ -141,8 +170,9 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
     # Fuente de clasificación
     if tipo in INTERCOMUNALES:
         subs = [pri_subclase(z, d, cfg["pri_subclase"]) for z, d in zip(out["zona"], out["zona_desc"])]
-        out["fuente"] = [f"PRI_{s}" if s else "PRI_R" for s in subs]
-        out["revisar"] = [s is None for s in subs]
+        defecto = entry.get("pri_default")
+        out["fuente"] = [f"PRI_{s or defecto or 'R'}" for s in subs]
+        out["revisar"] = [s is None and not defecto for s in subs]
     else:
         out["fuente"] = tipo
         out["revisar"] = False
