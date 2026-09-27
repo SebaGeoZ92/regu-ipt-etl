@@ -31,15 +31,26 @@ CAMPOS = ["ipt_tipo", "ipt_nombre", "servicio", "capa", "zona", "zona_desc",
 
 
 def _resolver_traslapes(geoms: np.ndarray, grid: float) -> tuple[np.ndarray, int]:
-    """Dentro de una misma fuente, el primero en el arreglo conserva el área disputada."""
+    """Dentro de una misma fuente, el primero en el arreglo conserva el área disputada.
+
+    Resta secuencial: a cada geometría se le quita la unión de las anteriores que la intersectan
+    (ya recortadas). Usa 'intersects' y no 'overlaps', que excluye contención e igualdad
+    (p.ej. un LU publicado idéntico en dos capas o una zona contenida en otra).
+    """
     if len(geoms) < 2:
         return geoms, 0
-    tree = shapely.STRtree(geoms)
-    pares = tree.query(geoms, predicate="overlaps")
+    tree = shapely.STRtree(geoms)  # sobre las originales: las recortadas son subconjuntos
     n = 0
-    for i, j in zip(*pares):
-        if i < j and not geoms[i].is_empty and not geoms[j].is_empty:
-            geoms[j] = shapely.difference(geoms[j], geoms[i], grid_size=grid)
+    for j in range(1, len(geoms)):
+        if geoms[j].is_empty:
+            continue
+        previas = [geoms[i] for i in tree.query(geoms[j], predicate="intersects")
+                   if i < j and not geoms[i].is_empty]
+        if not previas:
+            continue
+        tapa = shapely.union_all(previas, grid_size=grid)
+        if shapely.intersection(geoms[j], tapa, grid_size=grid).area > 0:
+            geoms[j] = _solo_poligonos(shapely.difference(geoms[j], tapa, grid_size=grid)) or shapely.Polygon()
             n += 1
     return geoms, n
 
@@ -130,6 +141,10 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
     capa["area_m2"] = area.round(1)
     area_com = comunas.set_index(comunas[f_cut].astype(str)).to_crs(cfg["crs"]["area"]).area
     resumen = capa.groupby(["cut", "clase"])["area_m2"].sum().unstack(fill_value=0)
+    # Traslape = suma de piezas − área de su unión (debe ser ~0)
+    capa_a = capa.to_crs(cfg["crs"]["area"])
+    union_com = {cut: shapely.union_all(g.values).area for cut, g in capa_a.groupby("cut").geometry}
+    suma_com = capa.groupby("cut")["area_m2"].sum()
     for qa in qas:
         tot = float(area_com.get(qa["cut"], np.nan))
         fila = resumen.loc[qa["cut"]] if qa["cut"] in resumen.index else None
@@ -138,6 +153,7 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
             qa[f"pct_{cl}"] = round(100 * v / tot, 3) if tot else None
         cubierto = float(fila.sum()) if fila is not None else 0.0
         qa["cobertura_pct"] = round(100 * cubierto / tot, 3) if tot else None
+        qa["traslape_m2"] = round(max(0.0, float(suma_com.get(qa["cut"], 0.0)) - union_com.get(qa["cut"], 0.0)), 1)
         qa["sin_urbano"] = (qa["pct_U1"] or 0) + (qa["pct_U2"] or 0) + (qa["pct_U3"] or 0) == 0
     capa.insert(0, "id", [f"{c}-{i:05d}" for i, c in enumerate(capa["cut"])])
     return capa, qas

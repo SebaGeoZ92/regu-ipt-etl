@@ -58,6 +58,8 @@ def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[d
         "piezas": len(capa),
         "comunas_sin_urbano": int(qa_df["sin_urbano"].sum()) if "sin_urbano" in qa_df else None,
         "cobertura_min_pct": float(qa_df["cobertura_pct"].min()) if len(qa_df) else None,
+        "cobertura_max_pct": float(qa_df["cobertura_pct"].max()) if len(qa_df) else None,
+        "traslape_max_m2": float(qa_df["traslape_m2"].max()) if "traslape_m2" in qa_df else None,
         "piezas_por_clase": capa["clase"].value_counts().to_dict(),
         "zonas_pri_a_revisar": int(capa["revisar"].fillna(False).astype(bool).sum()),
     }

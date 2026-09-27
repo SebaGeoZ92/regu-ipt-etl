@@ -38,6 +38,11 @@ def _escenario(tmp: Path):
         ("IPT/PRC_Araucania", 0, "PRC_Temuco"): [
             ({"ZONA": "ZU-1", "DESCRIPCION": "Zona urbana central"}, box(-72.65, -38.75, -72.58, -38.68)),
             ({"ZONA": "ZU-2", "DESCRIPCION": "Zona mixta"}, box(-72.60, -38.72, -72.48, -38.66)),  # traslapa ZU-1 y desborda a PLC
+            ({"ZONA": "ZU-3", "DESCRIPCION": "Zona contenida"}, box(-72.64, -38.74, -72.62, -38.72)),  # contenida en ZU-1
+        ],
+        # Mismo LU publicado en Limites_Urbanos y en PRC_Araucania (geometría idéntica)
+        ("IPT/Limites_Urbanos", 0, "Limite_Urbano_Padre_Las_Casas"): [
+            ({"COMUNA": "Padre Las Casas"}, box(-72.49, -38.76, -72.42, -38.70)),
         ],
         ("IPT/PRC_Araucania", 1, "Seccional_Temuco_Labranza"): [
             ({"ZONA": "ZS-A"}, box(-72.69, -38.70, -72.63, -38.65)),
@@ -48,6 +53,7 @@ def _escenario(tmp: Path):
         ("IPT/PRI_Araucania", 0, "PRI_Temuco_PLC"): [
             ({"ZONA": "ZEU-1", "DESCRIPCION": "Zona de extensión urbana"}, box(-72.70, -38.80, -72.60, -38.76)),
             ({"ZONA": "ZR-2", "DESCRIPCION": "Zona rural silvoagropecuaria"}, box(-72.9, -38.8, -72.8, -38.7)),
+            ({"ZONA": "ZR-3", "DESCRIPCION": "Zona rural de protección"}, box(-72.85, -38.75, -72.75, -38.65)),  # traslapa ZR-2
             ({"ZONA": "ZX", "DESCRIPCION": "Zona especial"}, box(-72.45, -38.66, -72.35, -38.62)),
         ],
         ("IPT/PRC_Araucania", 3, "PRC_Temuco_Riesgo"): [
@@ -73,7 +79,8 @@ def test_end_to_end():
         comunas, catalogo, cfg = _escenario(tmp)
         tipos = {e["layer_name"]: e["tipo"] for e, _ in catalogo}
         assert tipos == {"PRC_Temuco": "PRC", "Seccional_Temuco_Labranza": "SECCIONAL",
-                         "Limite_Urbano": "LU", "PRI_Temuco_PLC": "PRI", "PRC_Temuco_Riesgo": "AFECTACION"}
+                         "Limite_Urbano": "LU", "Limite_Urbano_Padre_Las_Casas": "LU",
+                         "PRI_Temuco_PLC": "PRI", "PRC_Temuco_Riesgo": "AFECTACION"}
 
         res = ComunaResolver(comunas, "CUT_COM", "COMUNA")
         assert res.resolve("Temuco Labranza") == "09101"
@@ -90,12 +97,14 @@ def test_end_to_end():
 
         capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION")
 
-        # 1. Cobertura total y sin traslapes
+        # 1. Cobertura de 100% ± 0,01 en TODAS las comunas y sin traslapes
+        #    ('intersects' y no 'overlaps': este último no ve contención ni igualdad)
         for qa in qas:
-            assert abs(qa["cobertura_pct"] - 100) < 0.01, qa
+            assert abs(qa["cobertura_pct"] - 100) <= 0.01, qa
+            assert qa["traslape_m2"] < 1.0, qa
         geoms = list(capa.geometry)
         tree = shapely.STRtree(geoms)
-        ovl = [(i, j) for i, j in zip(*tree.query(geoms, predicate="overlaps")) if i < j
+        ovl = [(i, j) for i, j in zip(*tree.query(geoms, predicate="intersects")) if i < j
                and geoms[i].intersection(geoms[j]).area > 1.0]
         assert not ovl, ovl
 
