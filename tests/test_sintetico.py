@@ -15,7 +15,8 @@ sys.path.insert(0, str(ROOT))
 from etl.arcgis import raw_path  # noqa: E402
 from etl.classify import clasificar  # noqa: E402
 from etl.export import anotar_legal, escribir  # noqa: E402
-from etl.normalize import ComunaResolver, aplicar_reglas, load_layer, separar_afectaciones  # noqa: E402
+from etl.classify import instrumentos_sin_comuna  # noqa: E402
+from etl.normalize import ComunaResolver, aplicar_reglas, cut_por_cascada, load_layer, separar_afectaciones  # noqa: E402
 
 REG = "Región de La Araucanía"
 
@@ -42,8 +43,10 @@ def _escenario(tmp: Path):
             ({"ZONA": "AR-2", "DESCRIPCION": "Área de riesgo por remoción en masa"}, box(-72.59, -38.71, -72.585, -38.705)),
         ],
         # Mismo LU publicado en Limites_Urbanos y en PRC_Araucania (geometría idéntica)
-        ("IPT/Limites_Urbanos", 0, "Limite_Urbano_Padre_Las_Casas"): [
-            ({"COMUNA": "Padre Las Casas"}, box(-72.49, -38.76, -72.42, -38.70)),
+        # COM con error de tipeo (como en MINVU): se resuelve en cascada por ADMIN
+        ("IPT/Limites_Urbanos", 0, "Limites_Urbanos_PRC"): [
+            ({"COM": "Padre de Las Casas", "ADMIN": "Municipalidad de Padre Las Casas",
+              "NOM": "Límite urbano de Padre Las Casas"}, box(-72.49, -38.76, -72.42, -38.70)),
         ],
         ("IPT/PRC_Araucania", 1, "Seccional_Temuco_Labranza"): [
             ({"ZONA": "ZS-A"}, box(-72.69, -38.70, -72.63, -38.65)),
@@ -85,12 +88,19 @@ def test_end_to_end():
         comunas, catalogo, cfg = _escenario(tmp)
         tipos = {e["layer_name"]: e["tipo"] for e, _ in catalogo}
         assert tipos == {"PRC_Temuco": "PRC", "Seccional_Temuco_Labranza": "SECCIONAL",
-                         "Limite_Urbano": "LU", "Limite_Urbano_Padre_Las_Casas": "LU",
+                         "Limite_Urbano": "LU", "Limites_Urbanos_PRC": "LU",
                          "PRI_Temuco_PLC": "PRI", "Límite área rural PRI": "PRI", "PRC_Temuco_Riesgo": "AFECTACION"}
 
         res = ComunaResolver(comunas, "CUT_COM", "COMUNA")
         assert res.resolve("Temuco Labranza") == "09101"
         assert res.resolve("Padre_Las_Casas") == "09112"
+        # Cascada COM → ADMIN → NOM → comuna_alias; ADMIN/NOM solo si traen el prefijo esperado
+        cas = lambda props, alias=None: cut_por_cascada(props, "COM", {**cfg, "comuna_alias": alias or {}}, res)  # noqa: E731
+        assert cas({"COM": "Temuco"}) == "09101"
+        assert cas({"COM": "Padre de Las Casas", "ADMIN": "Municipalidad de Padre Las Casas"}) == "09112"
+        assert cas({"COM": "Tmuco", "NOM": "Límite urbano de Temuco"}) == "09101"
+        assert cas({"COM": "Tmuco", "NOM": "Temuco centro"}) is None
+        assert cas({"COM": "Tmuco"}, {"Tmuco": "Temuco"}) == "09101"
 
         fuentes, afect = [], []
         for e, p in catalogo:
@@ -115,6 +125,9 @@ def test_end_to_end():
         zx = part[part.zona == "ZX"].iloc[0]
         assert zx["fuente"] == "PRI_E" and not zx["revisar"]
         assert set(af.zona) == {"ZR-3", "Riesgo aluvión"} and "ZR-3" not in set(part.zona)
+
+        assert set(fuentes.loc[fuentes.ipt_tipo == "LU", "cut_ipt"]) == {"09112"}
+        assert instrumentos_sin_comuna(fuentes, comunas, "COMUNA").empty
 
         capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION")
 

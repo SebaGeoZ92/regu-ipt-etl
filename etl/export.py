@@ -25,7 +25,8 @@ def anotar_legal(capa: gpd.GeoDataFrame, legal: dict) -> gpd.GeoDataFrame:
 
 
 def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[dict],
-             out_dir: Path, cfg: dict, sufijo: str = "nacional") -> dict:
+             out_dir: Path, cfg: dict, sufijo: str = "nacional",
+             sin_comuna: pd.DataFrame | None = None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     crs_out = cfg["crs"]["salida"]
     prec = int(cfg["build"]["precision_geojson"])
@@ -39,6 +40,8 @@ def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[d
         afect.to_crs(crs_out).to_file(gpkg, layer="afectaciones", driver="GPKG")
     qa_df = pd.DataFrame(qas)
     qa_df.to_csv(out_dir / f"qa_comunas_{tag}.csv", index=False, encoding="utf-8-sig")
+    if sin_comuna is not None:
+        sin_comuna.to_csv(out_dir / f"qa_sin_comuna_{tag}.csv", index=False, encoding="utf-8-sig")
     productos["gpkg"] = str(gpkg)
 
     cols = [c for c in capa.columns if cfg["build"]["incluir_attrs_raw_geojson"] or c != "attrs_raw"]
@@ -62,6 +65,7 @@ def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[d
         "traslape_max_m2": float(qa_df["traslape_m2"].max()) if "traslape_m2" in qa_df else None,
         "piezas_por_clase": capa["clase"].value_counts().to_dict(),
         "zonas_pri_a_revisar": int(capa["revisar"].fillna(False).astype(bool).sum()),
+        "instrumentos_sin_comuna": len(sin_comuna) if sin_comuna is not None else None,
     }
     (out_dir / f"resumen_{tag}.json").write_text(json.dumps(resumen, ensure_ascii=False, indent=2), encoding="utf-8")
     productos["resumen"] = resumen

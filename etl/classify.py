@@ -12,6 +12,7 @@ import logging
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 import shapely
 
 from .normalize import COMUNALES
@@ -117,6 +118,25 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
 
     qa["instrumentos"] = "; ".join(sorted(qa["instrumentos"]))
     return filas, qa
+
+
+def instrumentos_sin_comuna(fuentes: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, f_nom: str) -> pd.DataFrame:
+    """QA: features de instrumentos comunales (PRC/seccional/LU) sin cut_ipt que tocan las comunas procesadas.
+    Sin CUT no se filtran por comuna y pueden normar la comuna vecina."""
+    cols = ["servicio", "capa", "ipt_tipo", "ipt_nombre", "features", "comunas_tocadas", "ejemplo_attrs_raw"]
+    if fuentes.empty or "cut_ipt" not in fuentes:
+        return pd.DataFrame(columns=cols)
+    s = fuentes[fuentes["ipt_tipo"].isin(COMUNALES) & fuentes["cut_ipt"].isna()]
+    if s.empty:
+        return pd.DataFrame(columns=cols)
+    j = gpd.sjoin(s, comunas[[f_nom, "geometry"]].to_crs(s.crs), predicate="intersects")
+    if j.empty:
+        return pd.DataFrame(columns=cols)
+    return (j.groupby(["servicio", "capa", "ipt_tipo", "ipt_nombre"], dropna=False)
+             .agg(features=("attrs_raw", lambda x: x.index.nunique()),
+                  comunas_tocadas=(f_nom, lambda x: "; ".join(sorted(set(x)))),
+                  ejemplo_attrs_raw=("attrs_raw", "first"))
+             .reset_index()[cols])
 
 
 def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,

@@ -24,7 +24,7 @@ import yaml
 from pyproj import Transformer
 
 from etl.arcgis import ArcGISClient, ArcGISError, discover, download_entry, raw_path
-from etl.classify import clasificar
+from etl.classify import clasificar, instrumentos_sin_comuna
 from etl.export import anotar_legal, cargar_postgis, escribir
 from etl.normalize import ComunaResolver, load_layer, norm_txt, normalizar_catalogo, separar_afectaciones
 
@@ -195,11 +195,14 @@ def cmd_build(cfg, args):
     fuentes = gpd.GeoDataFrame(pd.concat(capas, ignore_index=True), crs=4326) if capas else \
         gpd.GeoDataFrame(columns=["fuente", "cut_ipt", "geometry"], geometry="geometry", crs=4326)
     capa, qas = clasificar(comunas, fuentes, cfg, c["field_cut"], c["field_nombre"], c["field_region"])
+    sin_comuna = instrumentos_sin_comuna(fuentes, comunas, c["field_nombre"])
+    for _, r in sin_comuna.iterrows():
+        log.warning("Sin comuna: %s/%s (%d features) toca %s", r["servicio"], r["capa"], r["features"], r["comunas_tocadas"])
     legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
     capa = anotar_legal(capa, legal)
     afect_gdf = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326) if afect else None
     sufijo = norm_txt(args.region).lower().replace(" ", "_") if args.region else "nacional"
-    prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo)
+    prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo, sin_comuna)
     log.info("Listo: %s", json.dumps(prod["resumen"], ensure_ascii=False))
     if args.postgis:
         cargar_postgis(capa, afect_gdf)

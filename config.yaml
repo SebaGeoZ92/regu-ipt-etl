@@ -73,6 +73,14 @@ overrides:
 zone_fields: [ZONA, ZONIFICACION, ZONIFICACI, NOM_ZONA, NOMBRE_ZONA, ZONA_PRC, COD_ZONA, SIGLA, CODIGO, ZONAS, NOMBRE]
 zone_desc_fields: [DESCRIPCION, DESCRIPCIO, DESCRIP, NOMBRE_ZONA, NOM_ZONA, USO, USO_SUELO, DETALLE, OBS]
 comuna_fields: [CUT, CUT_COM, COD_COMUNA, COMUNA, NOM_COMUNA, NOM_COM, NOMBRE_COM, COM]   # COM: esquema MINVU reciente (REG/COM/LOC/ZONA/NOM)
+# Si comuna_fields no resuelve (p.ej. COM = "Padre de Las Casas", "Teodoro Schmitdt"), se prueba en orden:
+# cada campo quitándole el prefijo (en mayúsculas sin tildes; solo se usa si lo trae), luego comuna_alias
+# sobre esos mismos valores y al final el nombre de la capa.
+comuna_cascada:
+  - {campo: ADMIN, prefijo: "^MUNICIPALIDAD DE "}
+  - {campo: NOM, prefijo: "^LIMITE URBANO DE "}
+comuna_alias: {}   # "<valor tal como viene>": "<nombre BCN>"
+#  "Padre de Las Casas": "Padre Las Casas"
 
 # Zonas de riesgo dentro de capas de zonificación (PRC, PRI, PRM, seccional): NO salen de la partición,
 # quedan en la clase de su instrumento con riesgo=True y además se copian a afectaciones.

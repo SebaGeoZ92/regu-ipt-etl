@@ -155,13 +155,12 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
     }, geometry=[polygonal(g) for g in gdf.geometry], crs="EPSG:4326")
     out = out[out.geometry.notna()].copy()
 
-    # CUT del instrumento: atributo por feature > nombre de la capa. PRI/PRM no se amarran a comuna.
+    # CUT del instrumento, en cascada: comuna_fields (COM...) > comuna_cascada (ADMIN, NOM) > comuna_alias
+    # > nombre de la capa. PRI/PRM no se amarran a comuna.
     if tipo in COMUNALES:
         cut_capa = resolver.resolve(nombre)
-        if cf:
-            out["cut_ipt"] = [resolver.resolve(v) or cut_capa for v in gdf.loc[out.index, cf]]
-        else:
-            out["cut_ipt"] = cut_capa
+        registros = gdf.loc[out.index, props].to_dict("records")
+        out["cut_ipt"] = [cut_por_cascada(r, cf, cfg, resolver) or cut_capa for r in registros]
     else:
         out["cut_ipt"] = None
     if tipo == "LU":
@@ -204,6 +203,26 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
                 continue
             out.at[i, "revisar"] = False
     return out
+
+
+def cut_por_cascada(props: dict, cf: str | None, cfg: dict, resolver: ComunaResolver) -> str | None:
+    """COM (comuna_fields) → pasos de comuna_cascada (p.ej. ADMIN sin 'MUNICIPALIDAD DE ', NOM sin
+    'LIMITE URBANO DE '; solo si traen ese prefijo) → comuna_alias sobre esos mismos valores."""
+    vals = [props.get(cf)] if cf else []
+    for paso in cfg.get("comuna_cascada") or []:
+        campo = pick_field(props.keys(), [paso["campo"]])
+        v = norm_txt(props.get(campo)) if campo else ""
+        if v and re.match(paso["prefijo"], v):
+            vals.append(re.sub(paso["prefijo"], "", v, count=1))
+    vals = [v for v in vals if v is not None and norm_txt(v)]
+    for v in vals:
+        if cut := resolver.resolve(v):
+            return cut
+    alias = {norm_txt(k): v for k, v in (cfg.get("comuna_alias") or {}).items()}
+    for v in vals:
+        if (a := alias.get(norm_txt(v))) and (cut := resolver.resolve(a)):
+            return cut
+    return None
 
 
 def es_envolvente(entry: dict, cfg: dict) -> bool:
