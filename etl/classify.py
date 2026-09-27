@@ -120,6 +120,19 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
     return filas, qa
 
 
+def recortar_afectaciones(afect: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, cfg: dict,
+                          f_cut: str, f_nom: str) -> gpd.GeoDataFrame:
+    """Recorta las afectaciones a las comunas procesadas (--region o nacional) y les asigna cut/comuna.
+    Una afectación que cruza un límite comunal queda partida en una pieza por comuna."""
+    crs_t = cfg["crs"]["trabajo"]
+    min_area = float(cfg["build"]["min_area_m2"])
+    c = (comunas[[f_cut, f_nom, "geometry"]].to_crs(crs_t)
+         .rename(columns={f_cut: "cut", f_nom: "comuna"}))
+    c["cut"] = c["cut"].astype(str)
+    out = gpd.overlay(afect.to_crs(crs_t), c, how="intersection", keep_geom_type=True)
+    return out[out.area >= min_area].reset_index(drop=True)
+
+
 def instrumentos_sin_comuna(fuentes: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, f_nom: str) -> pd.DataFrame:
     """QA: features de instrumentos comunales (PRC/seccional/LU) sin cut_ipt que tocan las comunas procesadas.
     Sin CUT no se filtran por comuna y pueden normar la comuna vecina."""

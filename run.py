@@ -24,7 +24,7 @@ import yaml
 from pyproj import Transformer
 
 from etl.arcgis import ArcGISClient, ArcGISError, discover, download_entry, raw_path
-from etl.classify import clasificar, instrumentos_sin_comuna
+from etl.classify import clasificar, instrumentos_sin_comuna, recortar_afectaciones
 from etl.export import anotar_legal, cargar_postgis, escribir
 from etl.normalize import ComunaResolver, load_layer, norm_txt, normalizar_catalogo, separar_afectaciones
 
@@ -201,6 +201,8 @@ def cmd_build(cfg, args):
     legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
     capa = anotar_legal(capa, legal)
     afect_gdf = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326) if afect else None
+    if afect_gdf is not None:
+        afect_gdf = recortar_afectaciones(afect_gdf, comunas, cfg, c["field_cut"], c["field_nombre"])
     sufijo = norm_txt(args.region).lower().replace(" ", "_") if args.region else "nacional"
     prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo, sin_comuna)
     log.info("Listo: %s", json.dumps(prod["resumen"], ensure_ascii=False))

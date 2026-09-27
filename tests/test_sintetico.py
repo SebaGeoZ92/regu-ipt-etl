@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from etl.arcgis import raw_path  # noqa: E402
 from etl.classify import clasificar  # noqa: E402
 from etl.export import anotar_legal, escribir  # noqa: E402
-from etl.classify import instrumentos_sin_comuna  # noqa: E402
+from etl.classify import instrumentos_sin_comuna, recortar_afectaciones  # noqa: E402
 from etl.normalize import ComunaResolver, aplicar_reglas, cut_por_cascada, load_layer, separar_afectaciones  # noqa: E402
 
 REG = "Región de La Araucanía"
@@ -169,6 +169,9 @@ def test_end_to_end():
         legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
         capa = anotar_legal(capa, legal)
         afect_gdf = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326)
+        # Afectaciones recortadas a las comunas procesadas y con cut: solo Temuco, sin Carahue
+        afect_gdf = recortar_afectaciones(afect_gdf, comunas[comunas.CUT_COM != "09102"], cfg, "CUT_COM", "COMUNA")
+        assert dict(zip(afect_gdf.zona, afect_gdf.cut)) == {"AR-1": "09101", "AR-2": "09101"}
         prod = escribir(capa, afect_gdf, qas, tmp / "out", cfg, "test")
         assert Path(prod["geojson"]).exists() and Path(prod["gpkg"]).exists()
         gj = json.loads(Path(prod["geojson"]).read_text(encoding="utf-8"))
