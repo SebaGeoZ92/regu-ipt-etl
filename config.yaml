@@ -48,7 +48,7 @@ service_rules:
 # Tipo de capa según su NOMBRE (servicios no cubiertos arriba, p.ej. PRC_<Región>). Se evalúa en orden; gana la primera coincidencia.
 layer_rules:
   - {pattern: "(riesgo|patrimon|inund|remoci|tsunami|zona_?t[ií]pica|afecta|vialidad)", tipo: AFECTACION}
-  - {pattern: "^(seccional|ps)[_ ]", tipo: SECCIONAL}
+  - {pattern: "^(plano[_ ])?(seccional|ps)[_ ]", tipo: SECCIONAL}   # "Plano_Seccional_..." (Negrete, Puente Alto)
   - {pattern: "(l[ií]mite[_ ]?urbano|^lu[_ ])", tipo: LU}
   - {pattern: "^(prms|prm|metropolitano)", tipo: PRM}
   - {pattern: "^(pri|intercomunal)", tipo: PRI}
@@ -61,7 +61,7 @@ overrides: {}
 
 zone_fields: [ZONA, ZONIFICACION, ZONIFICACI, NOM_ZONA, NOMBRE_ZONA, ZONA_PRC, COD_ZONA, SIGLA, CODIGO, ZONAS, NOMBRE]
 zone_desc_fields: [DESCRIPCION, DESCRIPCIO, DESCRIP, NOMBRE_ZONA, NOM_ZONA, USO, USO_SUELO, DETALLE, OBS]
-comuna_fields: [CUT, CUT_COM, COD_COMUNA, COMUNA, NOM_COMUNA, NOM_COM, NOMBRE_COM]
+comuna_fields: [CUT, CUT_COM, COD_COMUNA, COMUNA, NOM_COMUNA, NOM_COM, NOMBRE_COM, COM]   # COM: esquema MINVU reciente (REG/COM/LOC/ZONA/NOM)
 
 # Subclase de zonas PRI/PRM (regex sobre ZONA + DESCRIPCIÓN, en mayúsculas sin tildes).
 # Orden importa: E antes que U porque "extension urbana" contiene "URBAN".
