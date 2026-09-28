@@ -4,7 +4,7 @@
 Uso:
   python run.py discover [--region ARAUCANIA]      # catálogo de servicios/capas MINVU
   python run.py catalogo                           # re-aplica reglas de config.yaml al catálogo (sin red)
-  python run.py download [--region ARAUCANIA] [--refresh]
+  python run.py download [--region ARAUCANIA] [--refresh] [--capas IPT/PRC_Maule/3,...] [--vacias]
   python run.py build    [--region ARAUCANIA] [--postgis]
   python run.py all      [--region ARAUCANIA] [--postgis]
   python run.py importar-revision data/out/revision_arquitecto.csv   # decisiones del arquitecto → zone_overrides
@@ -155,6 +155,16 @@ def filtrar_catalogo_region(cli: ArcGISClient, cat: list[dict], filtro) -> list[
     return out
 
 
+def features_en_cache(p: Path) -> int | None:
+    """Número de features de una capa en caché (None si no está o no se puede leer)."""
+    if not p.exists():
+        return None
+    try:
+        return int(json.loads(p.read_text(encoding="utf-8")).get("_meta", {}).get("count", 0))
+    except (ValueError, OSError):
+        return None
+
+
 def cmd_download(cfg, args):
     cli = cliente(cfg)
     raw = ROOT / cfg["paths"]["raw"]
@@ -162,9 +172,27 @@ def cmd_download(cfg, args):
     cat = leer_catalogo(cfg)
     if args.region:
         cat = filtrar_catalogo_region(cli, cat, filtro_por_extension(cargar_comunas(cfg, args.region)))
+    refresh = args.refresh
+    # --capas / --vacias: solo esas capas, y siempre se vuelven a pedir (ignoran el caché)
+    if args.capas:
+        pedidas = {c.strip() for c in args.capas.split(",") if c.strip()}
+        cat = [e for e in cat if f"{e['service']}/{e['layer_id']}" in pedidas]
+        faltan = pedidas - {f"{e['service']}/{e['layer_id']}" for e in cat}
+        if faltan:
+            log.warning("--capas no están en el catálogo (o están IGNORADAS): %s", sorted(faltan))
+        refresh = True
+    if args.vacias:
+        cat = [e for e in cat if features_en_cache(raw_path(raw, e)) == 0]
+        refresh = True
+    if args.capas or args.vacias:
+        log.info("Se vuelven a pedir %d capas: %s", len(cat), [f"{e['service']}/{e['layer_id']}" for e in cat])
     for e in cat:
         try:
-            download_entry(cli, e, raw, refresh=args.refresh)
+            antes = features_en_cache(raw_path(raw, e))
+            p = download_entry(cli, e, raw, refresh=refresh)
+            if args.capas or args.vacias:
+                log.info("%s/%s %s: %s → %s features", e["service"], e["layer_id"], e["layer_name"],
+                         antes, features_en_cache(p))
         except ArcGISError as ex:
             log.error("✗ %s/%s: %s", e["service"], e["layer_name"], ex)
             fallas.append({**e, "error": str(ex)})
@@ -236,6 +264,8 @@ def main():
     ap.add_argument("archivo", nargs="?", help="importar-revision: CSV revision_arquitecto con 'decision' llena")
     ap.add_argument("--region", help="regex sobre el nombre de región (ej. ARAUCANIA)")
     ap.add_argument("--refresh", action="store_true", help="vuelve a descargar aunque exista caché")
+    ap.add_argument("--capas", help="download: solo estas capas '<servicio>/<id>,...' (ignora el caché)")
+    ap.add_argument("--vacias", action="store_true", help="download: vuelve a pedir solo las capas con 0 features en caché")
     ap.add_argument("--postgis", action="store_true", help="carga a PostGIS (requiere DATABASE_URL)")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
