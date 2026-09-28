@@ -69,6 +69,11 @@ def _escenario(tmp: Path):
         ("IPT/PRC_Araucania", 3, "PRC_Temuco_Riesgo"): [
             ({"ZONA": "AR-1", "DESCRIPCION": "Riesgo inundación"}, box(-72.62, -38.74, -72.60, -38.72)),
         ],
+        # Capa que mezcla protección (APP, no es riesgo) con riesgo (ARRI, riesgo por el nombre de la capa)
+        ("IPT/PRC_Araucania", 4, "PRC_Temuco_Areas_de_proteccion_y_riesgo"): [
+            ({"ZONA": "APP 1"}, box(-72.57, -38.70, -72.55, -38.68)),
+            ({"ZONA": "ARRI"}, box(-72.57, -38.72, -72.55, -38.705)),
+        ],
     }
     cfg = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
     raw = tmp / "raw"
@@ -90,7 +95,8 @@ def test_end_to_end():
         tipos = {e["layer_name"]: e["tipo"] for e, _ in catalogo}
         assert tipos == {"PRC_Temuco": "PRC", "Seccional_Temuco_Labranza": "SECCIONAL",
                          "Limite_Urbano": "LU", "Limites_Urbanos_PRC": "LU",
-                         "PRI_Temuco_PLC": "PRI", "Límite área rural PRI": "PRI", "PRC_Temuco_Riesgo": "AFECTACION"}
+                         "PRI_Temuco_PLC": "PRI", "Límite área rural PRI": "PRI", "PRC_Temuco_Riesgo": "AFECTACION",
+                         "PRC_Temuco_Areas_de_proteccion_y_riesgo": "AFECTACION"}
 
         # layer_rules_prioritarias ganan sobre service_rules, salvo servicios IGNORAR
         tipo = lambda s, n: aplicar_reglas({"service": s, "layer_id": 0, "layer_name": n}, cfg)["tipo"]  # noqa: E731
@@ -140,7 +146,9 @@ def test_end_to_end():
 
         afect_todas = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326)
         riesgos = afect_todas[afect_todas.riesgo.astype(bool)]
-        assert {"AR-1", "AR-2", "Riesgo aluvión"} == set(riesgos.zona)   # capa AFECTACION + zonas de PRC y PRI
+        # capas AFECTACION de riesgo + zonas de riesgo de PRC y PRI; APP (protección) excluida aunque la capa sea de riesgo
+        assert {"AR-1", "AR-2", "Riesgo aluvión", "ARRI"} == set(riesgos.zona)
+        assert "APP 1" in set(afect_todas.zona)
         capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION", riesgos)
 
         # 1. Cobertura de 100% ± 0,01 en TODAS las comunas y sin traslapes
@@ -177,6 +185,8 @@ def test_end_to_end():
         assert "U1" in set(capa[capa.intersection(rg["AR-2"]).area > 1.0].clase)
         assert not {"AR-2", "Riesgo aluvión"} & set(capa.zona)
         assert not capa[capa.zona == "ZEU-1"].riesgo.any()
+        app = afect_todas.to_crs(capa.crs).set_index("zona").geometry["APP 1"]
+        assert not capa[capa.intersection(app).area > 1.0].riesgo.any()
         # Zona de riesgo contenida en una zona PRI con subclase explícita: ZR-2 conserva clase y área total
         car = capa[capa.cut == "09102"]
         zr2 = car[car.zona == "ZR-2"]
@@ -190,7 +200,8 @@ def test_end_to_end():
         capa = anotar_legal(capa, legal)
         # Afectaciones recortadas a las comunas procesadas y con cut: solo Temuco, sin Carahue
         afect_gdf = recortar_afectaciones(afect_todas, comunas[comunas.CUT_COM != "09102"], cfg, "CUT_COM", "COMUNA")
-        assert dict(zip(afect_gdf.zona, afect_gdf.cut)) == {"AR-1": "09101", "AR-2": "09101"}
+        assert dict(zip(afect_gdf.zona, afect_gdf.cut)) == {"AR-1": "09101", "AR-2": "09101",
+                                                            "APP 1": "09101", "ARRI": "09101"}
         prod = escribir(capa, afect_gdf, qas, tmp / "out", cfg, "test")
         assert Path(prod["geojson"]).exists() and Path(prod["gpkg"]).exists()
         gj = json.loads(Path(prod["geojson"]).read_text(encoding="utf-8"))

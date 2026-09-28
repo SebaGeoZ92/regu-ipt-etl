@@ -193,8 +193,10 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
     # En la partición solo llenan lo que no cubre otra zona de su fuente; clasificar marca riesgo=True
     # en la parte de cada pieza que cae dentro de algún polígono de riesgo. separar_afectaciones las copia.
     pat = cfg.get("zona_riesgo")
+    excl = cfg.get("zona_riesgo_excluir")
     capa_riesgo = bool(pat and re.search(pat, norm_txt(entry["layer_name"])))
-    out["riesgo"] = [capa_riesgo or bool(pat and re.search(pat, f"{norm_txt(z)} {norm_txt(d)}"))
+    out["riesgo"] = [(capa_riesgo or bool(pat and re.search(pat, f"{norm_txt(z)} {norm_txt(d)}")))
+                     and not (excl and re.search(excl, norm_txt(z)))
                      for z, d in zip(out["zona"], out["zona_desc"])]
     if tipo != "AFECTACION":
         m = out["riesgo"] & (out["fuente"] != "PRI_ENV")

@@ -92,6 +92,9 @@ comuna_alias: {}   # "<valor tal como viene>": "<nombre BCN>"
 # quedan en la clase de su instrumento con riesgo=True y además se copian a afectaciones.
 # Regex sobre ZONA + DESCRIPCIÓN, en mayúsculas sin tildes.
 zona_riesgo: "RIESGO"
+# Zonas que NO son riesgo aunque vengan en una capa de riesgo (regex sobre ZONA, en mayúsculas sin tildes).
+# APP: áreas de protección (p.ej. PRC_Temuco_Areas_de_proteccion_y_riesgo mezcla APP con ARI/ARP/ARRI).
+zona_riesgo_excluir: "^APP\\b"
 
 # Tipificación manual de zonas, con prioridad sobre pri_subclase: "<ipt_nombre>|<zona>": E | U | R | AFECTACION
 # ipt_nombre y zona tal como salen en capa_ipt (se comparan sin tildes, mayúsculas ni guiones).
