@@ -165,23 +165,29 @@ def umbral_traslape(area_comuna_m2: float) -> float:
 def recortar_afectaciones(afect: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, cfg: dict,
                           f_cut: str, f_nom: str) -> gpd.GeoDataFrame:
     """Recorta las afectaciones a las comunas procesadas (--region o nacional) y les asigna cut/comuna.
-    Una afectación que cruza un límite comunal queda partida en una pieza por comuna."""
+    Una afectación que cruza un límite comunal queda partida en una pieza por comuna. Las de alcance
+    comunal (cut_ipt resuelto) solo se conservan en su comuna, igual que los PRC en la partición."""
     crs_t = cfg["crs"]["trabajo"]
     min_area = float(cfg["build"]["min_area_m2"])
     c = (comunas[[f_cut, f_nom, "geometry"]].to_crs(crs_t)
          .rename(columns={f_cut: "cut", f_nom: "comuna"}))
     c["cut"] = c["cut"].astype(str)
     out = gpd.overlay(afect.to_crs(crs_t), c, how="intersection", keep_geom_type=True)
-    return out[out.area >= min_area].reset_index(drop=True)
+    out = out[out.area >= min_area]
+    if "cut_ipt" in out:
+        out = out[out["cut_ipt"].isna() | (out["cut_ipt"] == out["cut"])]
+    return out.reset_index(drop=True)
 
 
 def instrumentos_sin_comuna(fuentes: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, f_nom: str) -> pd.DataFrame:
-    """QA: features de instrumentos comunales (PRC/seccional/LU) sin cut_ipt que tocan las comunas procesadas.
-    Sin CUT no se filtran por comuna y pueden normar la comuna vecina."""
+    """QA: features de alcance comunal (PRC/seccional/LU y afectaciones de PRC) sin cut_ipt que tocan las
+    comunas procesadas. Sin CUT no se filtran por comuna y pueden normar o afectar la comuna vecina."""
     cols = ["servicio", "capa", "ipt_tipo", "ipt_nombre", "features", "comunas_tocadas", "ejemplo_attrs_raw"]
     if fuentes.empty or "cut_ipt" not in fuentes:
         return pd.DataFrame(columns=cols)
-    s = fuentes[fuentes["ipt_tipo"].isin(COMUNALES) & fuentes["cut_ipt"].isna()]
+    comunal = (fuentes["comunal"].fillna(False).astype(bool) if "comunal" in fuentes
+               else fuentes["ipt_tipo"].isin(COMUNALES))
+    s = fuentes[comunal & fuentes["cut_ipt"].isna()]
     if s.empty:
         return pd.DataFrame(columns=cols)
     j = gpd.sjoin(s, comunas[[f_nom, "geometry"]].to_crs(s.crs), predicate="intersects")

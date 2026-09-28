@@ -68,6 +68,8 @@ def _escenario(tmp: Path):
         ],
         ("IPT/PRC_Araucania", 3, "PRC_Temuco_Riesgo"): [
             ({"ZONA": "AR-1", "DESCRIPCION": "Riesgo inundación"}, box(-72.62, -38.74, -72.60, -38.72)),
+            # riesgo del PRC de Temuco que se desborda a Padre Las Casas: solo afecta a Temuco
+            ({"ZONA": "AR-3", "DESCRIPCION": "Riesgo inundación"}, box(-72.52, -38.78, -72.47, -38.765)),
         ],
         # Capa que mezcla protección (APP, no es riesgo) con riesgo (ARRI, riesgo por el nombre de la capa)
         ("IPT/PRC_Araucania", 4, "PRC_Temuco_Areas_de_proteccion_y_riesgo"): [
@@ -147,9 +149,15 @@ def test_end_to_end():
         afect_todas = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326)
         riesgos = afect_todas[afect_todas.riesgo.astype(bool)]
         # capas AFECTACION de riesgo + zonas de riesgo de PRC y PRI; APP (protección) excluida aunque la capa sea de riesgo
-        assert {"AR-1", "AR-2", "Riesgo aluvión", "ARRI"} == set(riesgos.zona)
+        assert {"AR-1", "AR-2", "AR-3", "Riesgo aluvión", "ARRI"} == set(riesgos.zona)
         assert "APP 1" in set(afect_todas.zona)
-        capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION", riesgos)
+        # Afectaciones de PRC llevan CUT (por nombre de capa) y solo se aplican en su comuna
+        assert set(afect_todas.loc[afect_todas.capa == "PRC_Temuco_Riesgo", "cut_ipt"]) == {"09101"}
+        assert afect_todas.loc[afect_todas.zona == "Riesgo aluvión", "cut_ipt"].isna().all()   # PRI: sin comuna
+        afect_rec = recortar_afectaciones(afect_todas, comunas, cfg, "CUT_COM", "COMUNA")
+        assert afect_rec.loc[afect_rec.zona == "AR-3", "cut"].tolist() == ["09101"]   # el desborde a PLC se descarta
+        riesgos_rec = afect_rec[afect_rec.riesgo.astype(bool)]
+        capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION", riesgos_rec)
 
         # 1. Cobertura de 100% ± 0,01 en TODAS las comunas y sin traslapes
         #    ('intersects' y no 'overlaps': este último no ve contención ni igualdad)
@@ -187,6 +195,10 @@ def test_end_to_end():
         assert not capa[capa.zona == "ZEU-1"].riesgo.any()
         app = afect_todas.to_crs(capa.crs).set_index("zona").geometry["APP 1"]
         assert not capa[capa.intersection(app).area > 1.0].riesgo.any()
+        # El riesgo del PRC de Temuco marca Temuco, no Padre Las Casas
+        toca_ar3 = capa[capa.intersection(rg["AR-3"]).area > 1.0]
+        assert toca_ar3[toca_ar3.cut == "09101"].riesgo.all() and (toca_ar3.cut == "09101").any()
+        assert not toca_ar3[toca_ar3.cut == "09112"].riesgo.any() and (toca_ar3.cut == "09112").any()
         # Zona de riesgo contenida en una zona PRI con subclase explícita: ZR-2 conserva clase y área total
         car = capa[capa.cut == "09102"]
         zr2 = car[car.zona == "ZR-2"]
@@ -200,8 +212,8 @@ def test_end_to_end():
         capa = anotar_legal(capa, legal)
         # Afectaciones recortadas a las comunas procesadas y con cut: solo Temuco, sin Carahue
         afect_gdf = recortar_afectaciones(afect_todas, comunas[comunas.CUT_COM != "09102"], cfg, "CUT_COM", "COMUNA")
-        assert dict(zip(afect_gdf.zona, afect_gdf.cut)) == {"AR-1": "09101", "AR-2": "09101",
-                                                            "APP 1": "09101", "ARRI": "09101"}
+        assert sorted(zip(afect_gdf.zona, afect_gdf.cut)) == sorted([
+            ("AR-1", "09101"), ("AR-2", "09101"), ("AR-3", "09101"), ("APP 1", "09101"), ("ARRI", "09101")])
         prod = escribir(capa, afect_gdf, qas, tmp / "out", cfg, "test")
         assert Path(prod["geojson"]).exists() and Path(prod["gpkg"]).exists()
         gj = json.loads(Path(prod["geojson"]).read_text(encoding="utf-8"))

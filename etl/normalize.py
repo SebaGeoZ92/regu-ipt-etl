@@ -164,8 +164,13 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
     out = out[out.geometry.notna()].copy()
 
     # CUT del instrumento, en cascada: comuna_fields (COM...) > comuna_cascada (ADMIN, NOM) > comuna_alias
-    # > nombre de la capa. PRI/PRM no se amarran a comuna.
-    if tipo in COMUNALES:
+    # > nombre de la capa. PRI/PRM no se amarran a comuna. Las afectaciones de alcance comunal (de un PRC)
+    # también llevan CUT: un área de riesgo del PRC de Temuco no afecta a Padre Las Casas.
+    pat_com = cfg.get("afectacion_comunal")
+    comunal = tipo in COMUNALES or (tipo == "AFECTACION" and bool(
+        pat_com and re.search(pat_com, f"{entry['service']}/{entry['layer_name']}")))
+    out["comunal"] = comunal
+    if comunal:
         cut_capa = resolver.resolve(nombre)
         registros = gdf.loc[out.index, props].to_dict("records")
         out["cut_ipt"] = [cut_por_cascada(r, cf, cfg, resolver) or cut_capa for r in registros]

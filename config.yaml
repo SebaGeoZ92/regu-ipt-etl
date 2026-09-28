@@ -96,6 +96,11 @@ zona_riesgo: "RIESGO"
 # APP: áreas de protección (p.ej. PRC_Temuco_Areas_de_proteccion_y_riesgo mezcla APP con ARI/ARP/ARRI).
 zona_riesgo_excluir: "^APP\\b"
 
+# Afectaciones de alcance comunal (regex sobre "<servicio>/<nombre de capa>"): llevan CUT (misma cascada que
+# los PRC) y solo se aplican en su comuna, como la partición. Cubre los servicios PRC_<Región> y
+# IPT_AREA_RIESGO/PRC_Area_de_Riesgo. Las de PRI/PRM, Patrimonio, etc. no se filtran por comuna.
+afectacion_comunal: "/PRC_"
+
 # Tipificación manual de zonas, con prioridad sobre pri_subclase: "<ipt_nombre>|<zona>": E | U | R | AFECTACION
 # ipt_nombre y zona tal como salen en capa_ipt (se comparan sin tildes, mayúsculas ni guiones).
 # E/U/R solo aplican a PRI/PRM; AFECTACION saca la zona de la partición (PRI, PRM o PRC).

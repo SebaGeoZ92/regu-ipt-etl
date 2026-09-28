@@ -196,12 +196,16 @@ def cmd_build(cfg, args):
         log.warning("No hay capas IPT descargadas: todo quedará como R2")
     fuentes = gpd.GeoDataFrame(pd.concat(capas, ignore_index=True), crs=4326) if capas else \
         gpd.GeoDataFrame(columns=["fuente", "cut_ipt", "geometry"], geometry="geometry", crs=4326)
-    afect_gdf = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326) if afect else None
-    if afect_gdf is not None:
-        afect_gdf = recortar_afectaciones(afect_gdf, comunas, cfg, c["field_cut"], c["field_nombre"])
+    afect_crudas = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326) if afect else None
+    afect_gdf = None
+    if afect_crudas is not None:
+        afect_gdf = recortar_afectaciones(afect_crudas, comunas, cfg, c["field_cut"], c["field_nombre"])
     riesgos = afect_gdf[afect_gdf["riesgo"].fillna(False).astype(bool)] if afect_gdf is not None else None
     capa, qas = clasificar(comunas, fuentes, cfg, c["field_cut"], c["field_nombre"], c["field_region"], riesgos)
-    sin_comuna = instrumentos_sin_comuna(fuentes, comunas, c["field_nombre"])
+    # QA sin comuna: zonificación + capas AFECTACION (las copias de zonas de riesgo ya están en fuentes)
+    qa_com = fuentes if afect_crudas is None else gpd.GeoDataFrame(pd.concat(
+        [fuentes, afect_crudas[afect_crudas["ipt_tipo"] == "AFECTACION"]], ignore_index=True), crs=4326)
+    sin_comuna = instrumentos_sin_comuna(qa_com, comunas, c["field_nombre"])
     for _, r in sin_comuna.iterrows():
         log.warning("Sin comuna: %s/%s (%d features) toca %s", r["servicio"], r["capa"], r["features"], r["comunas_tocadas"])
     legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
