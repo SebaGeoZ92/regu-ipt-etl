@@ -14,7 +14,7 @@ from .normalize import norm_txt
 
 log = logging.getLogger(__name__)
 
-COLUMNAS = ["ipt_nombre", "zona", "zona_desc", "comunas", "ha", "subclase_actual", "decision"]
+COLUMNAS = ["region", "ipt_nombre", "zona", "zona_desc", "comunas", "ha", "subclase_actual", "decision"]
 DECISIONES = {"E", "U", "R", "AFECTACION"}
 
 
@@ -23,13 +23,15 @@ def _clave(nombre, zona) -> str:
 
 
 def generar_revision(capa: gpd.GeoDataFrame, path: Path) -> pd.DataFrame:
-    """Una fila por (ipt_nombre, zona) con revisar=True. Si el CSV ya existe, conserva las decisiones llenas."""
+    """Una fila por (ipt_nombre, zona) con revisar=True, ordenada por región y luego por ha descendente.
+    Si el CSV ya existe, conserva las decisiones llenas."""
     r = capa[capa["revisar"].fillna(False).astype(bool)]
     if r.empty:
         df = pd.DataFrame(columns=COLUMNAS)
     else:
         df = (r.groupby(["ipt_nombre", "zona"], dropna=False)
-               .agg(zona_desc=("zona_desc", "first"),
+               .agg(region=("region", lambda x: "; ".join(sorted(set(x)))),
+                    zona_desc=("zona_desc", "first"),
                     comunas=("comuna", lambda x: "; ".join(sorted(set(x)))),
                     ha=("area_m2", lambda x: round(x.sum() / 1e4, 2)),
                     subclase_actual=("fuente", lambda x: "; ".join(sorted({f.removeprefix("PRI_") for f in x}))))
@@ -39,7 +41,7 @@ def generar_revision(capa: gpd.GeoDataFrame, path: Path) -> pd.DataFrame:
         prev = pd.read_csv(path, encoding="utf-8-sig", dtype=str, keep_default_na=False)
         previas = {_clave(a, b): d for a, b, d in zip(prev["ipt_nombre"], prev["zona"], prev["decision"]) if d.strip()}
         df["decision"] = [previas.get(_clave(a, b), "") for a, b in zip(df["ipt_nombre"], df["zona"])]
-    df = df[COLUMNAS].sort_values(["ipt_nombre", "ha"], ascending=[True, False])
+    df = df[COLUMNAS].sort_values(["region", "ha", "ipt_nombre"], ascending=[True, False, True])
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(path, index=False, encoding="utf-8-sig")
     return df

@@ -223,9 +223,16 @@ def test_end_to_end():
         # Revisión del arquitecto: CSV de zonas revisar=True → importar-revision → zone_overrides
         csv_rev = tmp / "out" / "revision_arquitecto.csv"
         rev = generar_revision(capa, csv_rev)
-        assert list(rev.columns) == ["ipt_nombre", "zona", "zona_desc", "comunas", "ha", "subclase_actual", "decision"]
-        assert rev[["ipt_nombre", "zona", "comunas", "subclase_actual"]].values.tolist() == \
-            [["Temuco PLC", "ZX", "Padre Las Casas", "R"]]
+        assert list(rev.columns) == ["region", "ipt_nombre", "zona", "zona_desc", "comunas", "ha",
+                                     "subclase_actual", "decision"]
+        assert rev[["region", "ipt_nombre", "zona", "comunas", "subclase_actual"]].values.tolist() == \
+            [[REG, "Temuco PLC", "ZX", "Padre Las Casas", "R"]]
+        # orden: región y luego ha descendente
+        falsa = pd.DataFrame({"region": ["B", "A", "A"], "ipt_nombre": ["x", "y", "z"], "zona": ["1", "2", "3"],
+                              "zona_desc": None, "comuna": ["c1", "c2", "c3"], "area_m2": [5e4, 1e4, 9e4],
+                              "fuente": "PRI_R", "revisar": True})
+        orden = generar_revision(falsa, tmp / "orden.csv")
+        assert orden[["region", "zona", "ha"]].values.tolist() == [["A", "3", 9.0], ["A", "2", 1.0], ["B", "1", 5.0]]
         rev.loc[0, "decision"] = "e"
         rev.to_csv(csv_rev, index=False, encoding="utf-8-sig")
         assert generar_revision(capa, csv_rev).loc[0, "decision"] == "e"   # rebuild no borra decisiones
