@@ -33,7 +33,8 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
   - `python run.py importar-revision <csv>` las lleva a `zone_overrides`.
 - **`layer_rules_prioritarias`** se evalúan antes de `service_rules`, salvo en servicios IGNORAR. Solo patrones inequívocos: riesgo, patrimonio, zona típica y vialidad → AFECTACION; límite urbano → LU.
 - **Comuna de instrumentos comunales, en cascada**: `comuna_fields` (COM…) → ADMIN sin "Municipalidad de " → NOM sin "Límite urbano de " (ambos solo si traen el prefijo) → `comuna_alias` → nombre de capa. Lo que no resuelve queda en `qa_sin_comuna_<tag>.csv`, porque sin CUT el instrumento puede normar la comuna vecina.
-- **Afectaciones**: `build` las recorta a las comunas procesadas y les asigna `cut` y `comuna`.
+- **Afectaciones**: `build` las recorta a las comunas procesadas y les asigna `cut` y `comuna`. Las de alcance comunal (`afectacion_comunal: "/PRC_"`, que cubre `PRC_<Región>` e `IPT_AREA_RIESGO/PRC_Area_de_Riesgo`) resuelven `cut_ipt` con la misma cascada y **solo se aplican en su comuna** (28-sep-2026). Las de PRI/PRM y Patrimonio no se filtran.
+- **APP no es riesgo**: `zona_riesgo_excluir: "^APP\b"` gana sobre `zona_riesgo`. Las zonas APP siguen en afectaciones, pero no marcan riesgo (28-sep-2026).
 - **Capas superpuestas de PRC** (ZNE, ICH, ZCH, AR, restricción) se tipifican como AFECTACION, porque como PRC extendían U1.
 
 ## Arquitectura
@@ -57,7 +58,9 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 - Hay extensiones de servicio infladas: PRC_OHiggins, PRC_Valparaíso, PRI_Antofagasta y PRI_Coquimbo cruzan el bbox de Araucanía.
 - `PRC_Valparaíso/72` (`PRC_LosAndes_ICH`) trae datos de Limache.
 - Varias capas de servicios PRI/PRMS son de riesgo, LU o vialidad. `layer_rules_prioritarias` corrige 11 de ellas. `PRMS_LU`, `PRMS_Resguardo_*` y `PRI_Valparaiso/Área Protección cultural_pto` siguen como PRI/PRM: **PENDIENTE**.
-- `PRC_Temuco_Areas_de_proteccion_y_riesgo` mezcla zonas de protección (APP 1, APP 3) con zonas de riesgo (ARC, ARI, ARP, ARRI), y la misma geometría está en `IPT_AREA_RIESGO/PRC_Area_de_Riesgo`. Un área de riesgo del PRC de Temuco se desborda 88 ha hacia Padre Las Casas. **PENDIENTE decidir**: excluir APP del riesgo y filtrar las afectaciones de PRC por comuna.
+- `PRC_Temuco_Areas_de_proteccion_y_riesgo` mezcla zonas de protección (APP 1, APP 3) con zonas de riesgo (ARC, ARI, ARP, ARRI). Las zonas de riesgo también están en `IPT_AREA_RIESGO/PRC_Area_de_Riesgo`. Un área de riesgo del PRC de Temuco se desbordaba 88 ha hacia Padre Las Casas. Resuelto con `zona_riesgo_excluir` y `afectacion_comunal`.
+- `IPT_AREA_RIESGO/PRC_Area_de_Riesgo` trae COM mal escrito o con la localidad ("Pitufquén", "Puerto Saavedra"): se resuelve con `comuna_alias`.
+- Capas publicadas vacías (0 features, 27-sep-2026): `PRC_OHiggins/25` Palmilla–San José del Carmen, `PRC_Valparaíso/2` Calle Larga y `PRC_Valparaíso/32` San Esteban, todas de riesgo. **PENDIENTE** volver a pedirlas.
 
 ## Base comunal
 
@@ -67,11 +70,11 @@ BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comuna
 
 1. [x] `python run.py catalogo`: ajustadas las capas IGNORADAS. Quedan ignorados a propósito `PRC_Nuble` y los PRDU.
 2. [x] Piloto: `python run.py download --region ARAUCANIA` y luego `python run.py build --region ARAUCANIA`.
-3. [ ] QA piloto (27-sep-2026): 32 comunas, cobertura 100% en todas, traslape máx 1,1 m² (ruido numérico), 0 instrumentos sin comuna. Pendiente:
+3. [ ] QA piloto (28-sep-2026): 32 comunas, cobertura 100% en todas, traslape máx 0,4 m² (bajo el umbral relativo en todas), 0 instrumentos sin comuna. Pendiente:
    - **Lumaco** sale `sin_urbano=True`: MINVU no publica PRC ni LU. Confirmar con el arquitecto o la DOM.
    - 8 zonas del PRI Lago Villarrica con `revisar=True` (Zona de vivienda, hoteleras, camping, etc.; hoy quedan en R1 por defecto). El arquitecto debe llenar `data/out/revision_arquitecto.csv` y luego se corre `importar-revision`.
 4. [x] Nombres PRC/LU que no resuelven comuna: se resuelven con la cascada. Revisar `qa_sin_comuna_<tag>.csv` en cada región.
-5. [ ] Escalar a nivel nacional.
+5. [ ] Escalar a nivel nacional. `discover` + `download` nacional listos (27-sep-2026): 579 capas en el catálogo, las 539 a descargar están en caché (117.030 features), sin fallas y 3 capas vacías. Falta el `build` nacional.
 6. [ ] Siguiente fase: cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
 
 ## Entorno
