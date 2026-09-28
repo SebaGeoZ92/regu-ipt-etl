@@ -85,8 +85,9 @@ comuna_fields: [CUT, CUT_COM, COD_COMUNA, COMUNA, NOM_COMUNA, NOM_COM, NOMBRE_CO
 comuna_cascada:
   - {campo: ADMIN, prefijo: "^MUNICIPALIDAD DE "}
   - {campo: NOM, prefijo: "^LIMITE URBANO DE "}
-comuna_alias: {}   # "<valor tal como viene>": "<nombre BCN>"
-#  "Padre de Las Casas": "Padre Las Casas"
+comuna_alias:   # "<valor tal como viene>": "<nombre BCN>"
+  "Pitufquén": "Pitrufquén"          # IPT_AREA_RIESGO/PRC_Area_de_Riesgo
+  "Puerto Saavedra": "Saavedra"      # IPT_AREA_RIESGO/PRC_Area_de_Riesgo (COM trae la localidad)
 
 # Zonas de riesgo dentro de capas de zonificación (PRC, PRI, PRM, seccional): NO salen de la partición,
 # quedan en la clase de su instrumento con riesgo=True y además se copian a afectaciones.
