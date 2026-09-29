@@ -25,7 +25,7 @@ import yaml
 from pyproj import Transformer
 
 from etl.arcgis import ArcGISClient, ArcGISError, discover, download_entry, raw_path
-from etl.classify import clasificar, instrumentos_sin_comuna, recortar_afectaciones
+from etl.classify import clasificar, instrumentos_sin_comuna, ipt_fuera_de_dpa, recortar_afectaciones
 from etl.export import anotar_legal, cargar_postgis, escribir
 from etl.normalize import ComunaResolver, load_layer, norm_txt, normalizar_catalogo, separar_afectaciones
 from etl.revision import generar_revision, importar_revision
@@ -240,10 +240,15 @@ def cmd_build(cfg, args):
     sin_comuna = instrumentos_sin_comuna(qa_com, comunas, c["field_nombre"])
     for _, r in sin_comuna.iterrows():
         log.warning("Sin comuna: %s/%s (%d features) toca %s", r["servicio"], r["capa"], r["features"], r["comunas_tocadas"])
+    fuera_dpa = ipt_fuera_de_dpa(fuentes, cargar_comunas(cfg, None), comunas, cfg,
+                                 c["field_cut"], c["field_nombre"], c["field_region"])
+    if not fuera_dpa.empty:
+        log.warning("IPT comunal fuera de la DPA BCN: %.1f ha en %d comunas (máx %s %.1f ha)", fuera_dpa.ha_fuera.sum(),
+                    len(fuera_dpa), fuera_dpa.comuna.iloc[0], fuera_dpa.ha_fuera.iloc[0])
     legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
     capa = anotar_legal(capa, legal)
     sufijo = norm_txt(args.region).lower().replace(" ", "_") if args.region else "nacional"
-    prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo, sin_comuna)
+    prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo, sin_comuna, fuera_dpa)
     rev = generar_revision(capa, ROOT / cfg["paths"]["out"] / "revision_arquitecto.csv")
     log.info("revision_arquitecto.csv: %d zonas con revisar=True (%d ya decididas)",
              len(rev), int((rev["decision"] != "").sum()))

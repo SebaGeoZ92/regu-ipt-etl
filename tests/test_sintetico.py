@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 from etl.arcgis import raw_path  # noqa: E402
 from etl.classify import clasificar  # noqa: E402
 from etl.export import anotar_legal, escribir  # noqa: E402
-from etl.classify import instrumentos_sin_comuna, recortar_afectaciones, umbral_traslape  # noqa: E402
+from etl.classify import instrumentos_sin_comuna, ipt_fuera_de_dpa, recortar_afectaciones, umbral_traslape  # noqa: E402
 from etl.normalize import ComunaResolver, aplicar_reglas, cut_por_cascada, load_layer, separar_afectaciones  # noqa: E402
 from etl.revision import generar_revision, importar_revision  # noqa: E402
 from etl import progreso  # noqa: E402
@@ -45,6 +45,8 @@ def _escenario(tmp: Path):
             ({"ZONA": "ZU-2", "DESCRIPCION": "Zona mixta"}, box(-72.60, -38.72, -72.48, -38.66)),  # traslapa ZU-1 y desborda a PLC
             ({"ZONA": "ZU-3", "DESCRIPCION": "Zona contenida"}, box(-72.64, -38.74, -72.62, -38.72)),  # contenida en ZU-1
             ({"ZONA": "AR-2", "DESCRIPCION": "Área de riesgo por remoción en masa"}, box(-72.59, -38.71, -72.585, -38.705)),
+            # zona que sale de TODAS las comunas (como un PRC costero con mejor línea de costa que la DPA)
+            ({"ZONA": "ZU-4", "DESCRIPCION": "Borde costero"}, box(-72.60, -38.62, -72.55, -38.58)),
         ],
         # Mismo LU publicado en Limites_Urbanos y en PRC_Araucania (geometría idéntica)
         # COM con error de tipeo (como en MINVU): se resuelve en cascada por ADMIN
@@ -151,6 +153,11 @@ def test_end_to_end():
 
         assert set(fuentes.loc[fuentes.ipt_tipo == "LU", "cut_ipt"]) == {"09112"}
         assert instrumentos_sin_comuna(fuentes, comunas, "COMUNA").empty
+        # QA de pérdida costera: solo la parte de ZU-4 al norte de -38.6 queda fuera de todas las comunas
+        fd = ipt_fuera_de_dpa(fuentes, comunas, comunas, cfg, "CUT_COM", "COMUNA", "REGION")
+        esperado = gpd.GeoSeries([box(-72.60, -38.60, -72.55, -38.58)], crs=4326).to_crs(cfg["crs"]["area"]).area[0] / 1e4
+        # (tolerancia 1%: las aristas de las cajas reproyectadas no siguen exactamente el paralelo -38,6)
+        assert fd.cut.tolist() == ["09101"] and abs(fd.ha_fuera.iloc[0] / esperado - 1) < 0.01, (fd.to_dict("records"), esperado)
 
         afect_todas = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326)
         riesgos = afect_todas[afect_todas.riesgo.astype(bool)]

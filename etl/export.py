@@ -38,7 +38,7 @@ def _validar(g: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, int, int]:
 
 def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[dict],
              out_dir: Path, cfg: dict, sufijo: str = "nacional",
-             sin_comuna: pd.DataFrame | None = None) -> dict:
+             sin_comuna: pd.DataFrame | None = None, fuera_dpa: pd.DataFrame | None = None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     crs_out = cfg["crs"]["salida"]
     prec = int(cfg["build"]["precision_geojson"])
@@ -57,6 +57,8 @@ def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[d
     qa_df.to_csv(out_dir / f"qa_comunas_{tag}.csv", index=False, encoding="utf-8-sig")
     if sin_comuna is not None:
         sin_comuna.to_csv(out_dir / f"qa_sin_comuna_{tag}.csv", index=False, encoding="utf-8-sig")
+    if fuera_dpa is not None:
+        fuera_dpa.to_csv(out_dir / f"qa_fuera_dpa_{tag}.csv", index=False, encoding="utf-8-sig")
     productos["gpkg"] = str(gpkg)
 
     cols = [c for c in capa.columns if cfg["build"]["incluir_attrs_raw_geojson"] or c != "attrs_raw"]
@@ -82,6 +84,7 @@ def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[d
         "piezas_por_clase": capa["clase"].value_counts().to_dict(),
         "zonas_pri_a_revisar": int(capa["revisar"].fillna(False).astype(bool).sum()),
         "instrumentos_sin_comuna": len(sin_comuna) if sin_comuna is not None else None,
+        "ipt_fuera_dpa_ha": round(float(fuera_dpa["ha_fuera"].sum()), 1) if fuera_dpa is not None and len(fuera_dpa) else 0.0,
         "piezas_invalidas": int((~capa.is_valid).sum()),
         "piezas_corregidas_export": n_corr,
         "piezas_degeneradas_eliminadas": n_elim,

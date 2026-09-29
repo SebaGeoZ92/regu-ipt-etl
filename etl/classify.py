@@ -278,6 +278,38 @@ def recortar_afectaciones(afect: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, cf
     return out.reset_index(drop=True)
 
 
+def ipt_fuera_de_dpa(fuentes: gpd.GeoDataFrame, comunas_todas: gpd.GeoDataFrame, comunas_proc: gpd.GeoDataFrame,
+                     cfg: dict, f_cut: str, f_nom: str, f_reg: str) -> pd.DataFrame:
+    """QA de pérdida costera: superficie de instrumentos comunales (PRC/LU/seccional) que queda fuera de TODAS
+    las comunas BCN (la partición no la cubre). Por comuna del instrumento (cut_ipt), solo comunas procesadas.
+    'lado' es heurístico: oeste del centroide de la comuna → probablemente costa."""
+    cols = ["cut", "comuna", "region", "ha_ipt", "ha_fuera", "pct_fuera", "lado", "n_partes"]
+    crs_a = cfg["crs"]["area"]
+    s = fuentes[fuentes["ipt_tipo"].isin(COMUNALES) & fuentes["cut_ipt"].notna()]
+    s = s[s["cut_ipt"].isin(set(comunas_proc[f_cut].astype(str)))]
+    if s.empty:
+        return pd.DataFrame(columns=cols)
+    s = s.to_crs(crs_a)
+    dpa = shapely.union_all(shapely.make_valid(comunas_todas.to_crs(crs_a).geometry.values))
+    shapely.prepare(dpa)
+    com = comunas_todas.to_crs(crs_a).set_index(comunas_todas[f_cut].astype(str))
+    filas = []
+    for cut, g in s.groupby("cut_ipt"):
+        huella = shapely.union_all(shapely.make_valid(g.geometry.values))
+        if shapely.within(huella, dpa):
+            continue
+        fuera = _solo_poligonos(shapely.difference(huella, dpa))
+        if fuera is None or fuera.area < 1.0:
+            continue
+        cx = com.geometry[cut].centroid.x if cut in com.index else huella.centroid.x
+        filas.append({"cut": cut, "comuna": com[f_nom].get(cut), "region": com[f_reg].get(cut),
+                      "ha_ipt": round(huella.area / 1e4, 2), "ha_fuera": round(fuera.area / 1e4, 2),
+                      "pct_fuera": round(100 * fuera.area / huella.area, 2),
+                      "lado": "oeste (costa probable)" if fuera.centroid.x < cx else "este",
+                      "n_partes": len(getattr(fuera, "geoms", [fuera]))})
+    return pd.DataFrame(filas, columns=cols).sort_values("ha_fuera", ascending=False).reset_index(drop=True)
+
+
 def instrumentos_sin_comuna(fuentes: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, f_nom: str) -> pd.DataFrame:
     """QA: features de alcance comunal (PRC/seccional/LU y afectaciones de PRC) sin cut_ipt que tocan las
     comunas procesadas. Sin CUT no se filtran por comuna y pueden normar o afectar la comuna vecina."""
