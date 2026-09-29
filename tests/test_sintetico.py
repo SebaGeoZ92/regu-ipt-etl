@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 import geopandas as gpd
+import numpy as np
 import shapely
 import yaml
 from shapely.geometry import box, mapping
@@ -169,7 +170,9 @@ def test_end_to_end():
 
         # 1. Cobertura de 100% ± 0,01 en TODAS las comunas y sin traslapes
         #    ('intersects' y no 'overlaps': este último no ve contención ni igualdad)
+        assert capa.is_valid.all()
         for qa in qas:
+            assert qa["particion_rescates"] == 0 and qa["riesgo_rescates"] == 0, qa
             assert abs(qa["cobertura_pct"] - 100) <= 0.01, qa
             assert qa["traslape_m2"] < umbral_traslape(qa["area_comuna_m2"]) and qa["traslape_ok"], qa
         geoms = list(capa.geometry)
@@ -224,6 +227,8 @@ def test_end_to_end():
             ("AR-1", "09101"), ("AR-2", "09101"), ("AR-3", "09101"), ("APP 1", "09101"), ("ARRI", "09101")])
         prod = escribir(capa, afect_gdf, qas, tmp / "out", cfg, "test")
         assert Path(prod["geojson"]).exists() and Path(prod["gpkg"]).exists()
+        assert prod["resumen"]["piezas_invalidas"] == 0
+        assert gpd.read_file(prod["gpkg"], layer="capa_ipt").is_valid.all()
         gj = json.loads(Path(prod["geojson"]).read_text(encoding="utf-8"))
         assert gj["features"][0]["properties"]["norma_titulo"]
         print(json.dumps(prod["resumen"], ensure_ascii=False, indent=1))
@@ -278,6 +283,33 @@ def test_rescate_geos():
     out = r.op(fragil, box(0, 0, 10, 10), box(5, 5, 15, 15))
     assert r.n == 1 and abs(out.area - 25) < 1e-6
     assert r.op(shapely.intersection, box(0, 0, 2, 2), box(1, 1, 3, 3)).area == 1 and r.n == 1
+
+    # Resultado erróneo sin excepción: inválido, o VÁLIDO pero fuera de las entradas (caso real La Pintana:
+    # la intersección devolvía la zona completa, fuera de la comuna). Se detecta por validez y contenido,
+    # también en la versión vectorizada.
+    corbata = shapely.Polygon([(0, 0), (10, 10), (10, 0), (0, 10)])   # autointersectado
+
+    def devuelve(malo):
+        def fn(a, b, grid_size=None):
+            if grid_size == GRID_RESCATE:
+                return shapely.intersection(a, b, grid_size=grid_size)
+            if isinstance(a, np.ndarray):
+                out = shapely.intersection(a, b)
+                out[1] = malo if malo is not None else a[1]
+                return out
+            return malo if malo is not None else a
+        fn.__name__ = "intersection"
+        return fn
+
+    for malo in (corbata, None):   # None: devuelve la entrada completa, válida pero fuera de b
+        f = devuelve(malo)
+        r = _Rescates(None)
+        assert not r._bien(shapely.intersection, box(0, 0, 10, 10), box(0, 0, 10, 10), box(20, 20, 30, 30))
+        r = _Rescates(None)
+        arr = np.array([box(0, 0, 2, 2), box(20, 20, 30, 30)], dtype=object)
+        # op_vec verifica contenido para cualquier fn vectorizada; se usa con shapely.intersection
+        out = r.op_vec(lambda a, b, grid_size=None, _f=f: _f(a, b, grid_size), arr, box(1, 1, 3, 3))
+        assert r.n == 1 and out[0].area == 1 and out[1].is_empty, (malo, r.n, list(out))
 
 
 def test_paginacion_arcgis():

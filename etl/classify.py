@@ -33,7 +33,98 @@ CAMPOS = ["ipt_tipo", "ipt_nombre", "servicio", "capa", "zona", "zona_desc",
           "attrs_raw", "fuente_url", "fecha_extraccion", "revisar", "riesgo"]
 
 
-def _resolver_traslapes(geoms: np.ndarray, grid: float) -> tuple[np.ndarray, int]:
+# Grilla de rescate (metros) cuando GEOS falla con precisión flotante. Dos modos de falla vistos en el build
+# nacional: lanza TopologyException ("non-noded intersection", Chañaral) o devuelve un resultado VÁLIDO pero
+# ERRÓNEO (La Pintana: intersection(AV2 PRMS, restante) devolvía AV2 completa, 305.045 m² fuera de la comuna).
+# Por eso cada resultado se verifica:
+#   - siempre (barato): válido, área ≤ área de sus entradas y bbox dentro del bbox de sus entradas;
+#   - en la intersección principal de cada clase (op_vec, donde ocurrió La Pintana): contenido estricto en el
+#     restante con un PREDICADO (within contra el restante con un buffer de tolerancia, calculado una vez por
+#     clase), no con otra operación de overlay, que con ese par repetía el mismo error y lo ocultaba.
+GRID_RESCATE = 0.001
+TOL_M = 0.01                 # tolerancia lineal (bbox y buffer)
+TOL_M2 = 1.0                 # tolerancia de área
+
+
+def _bbox_dentro(r, ref) -> np.ndarray | bool:
+    """bbox de r dentro del bbox de ref (+TOL_M), vectorizado."""
+    rb, fb = shapely.bounds(r), shapely.bounds(ref)
+    return ((rb[..., 0] >= fb[..., 0] - TOL_M) & (rb[..., 1] >= fb[..., 1] - TOL_M)
+            & (rb[..., 2] <= fb[..., 2] + TOL_M) & (rb[..., 3] <= fb[..., 3] + TOL_M))
+
+
+def _plausible(r, *refs) -> np.ndarray | bool:
+    """Control barato de un resultado de overlay contenido en cada ref: área y bbox (vectorizado)."""
+    ok = np.ones(np.shape(r), dtype=bool) if isinstance(r, np.ndarray) else True
+    for ref in refs:
+        ok = ok & (shapely.area(r) <= shapely.area(ref) + TOL_M2) & _bbox_dentro(r, ref)
+    return ok
+
+
+class _Rescates:
+    """Operaciones GEOS verificadas: exacta → si lanza GEOSException, el resultado es inválido o no queda
+    contenido en sus entradas, se repite con make_valid + grilla GRID_RESCATE. Cuenta los rescates (QA)."""
+
+    def __init__(self, grid):
+        self.grid, self.n = grid, 0
+
+    def _reintentar(self, fn, *geoms):
+        self.n += 1
+        return fn(*[shapely.make_valid(g) for g in geoms], grid_size=GRID_RESCATE)
+
+    @staticmethod
+    def _bien(fn, r, a, b) -> bool:
+        if not r.is_valid:
+            return False
+        if r.is_empty:
+            return True
+        if fn is shapely.intersection:
+            return bool(_plausible(r, a, b))
+        if fn is shapely.difference:
+            return bool(_plausible(r, a))
+        return True
+
+    def union(self, geoms):
+        try:
+            u = shapely.union_all(geoms, grid_size=self.grid)
+            if u.is_valid:
+                return u
+        except shapely.errors.GEOSException:
+            pass
+        self.n += 1
+        return shapely.union_all(shapely.make_valid(np.asarray(geoms, dtype=object)), grid_size=GRID_RESCATE)
+
+    def op(self, fn, a, b):
+        try:
+            r = fn(a, b, grid_size=self.grid)
+            if self._bien(fn, r, a, b):
+                return r
+        except shapely.errors.GEOSException:
+            pass
+        return self._reintentar(fn, a, b)
+
+    def op_vec(self, fn, arr: np.ndarray, b) -> np.ndarray:
+        """Intersección vectorizada arr[i] ∩ b; rescata elemento a elemento los resultados inválidos o que
+        sobresalen de b o de arr[i] (o todo el lote si GEOS lanza excepción)."""
+        try:
+            out = fn(arr, b, grid_size=self.grid)
+        except shapely.errors.GEOSException:
+            return np.array([self.op(fn, a, b) for a in arr], dtype=object)
+        malos = ~shapely.is_valid(out)
+        llenos = ~shapely.is_empty(out) & ~malos
+        if llenos.any():
+            idx = np.flatnonzero(llenos)
+            ok = _plausible(out[idx], arr[idx], b)
+            holgura = shapely.buffer(b, TOL_M)   # una vez por lote
+            shapely.prepare(holgura)
+            ok &= shapely.within(out[idx], holgura)
+            malos[idx[~ok]] = True
+        for i in np.flatnonzero(malos):
+            out[i] = self._reintentar(fn, arr[i], b)
+        return out
+
+
+def _resolver_traslapes(geoms: np.ndarray, grid: float, r: _Rescates | None = None) -> tuple[np.ndarray, int]:
     """Dentro de una misma fuente, el primero en el arreglo conserva el área disputada.
 
     Resta secuencial: a cada geometría se le quita la unión de las anteriores que la intersectan
@@ -42,6 +133,7 @@ def _resolver_traslapes(geoms: np.ndarray, grid: float) -> tuple[np.ndarray, int
     """
     if len(geoms) < 2:
         return geoms, 0
+    r = r or _Rescates(grid)
     tree = shapely.STRtree(geoms)  # sobre las originales: las recortadas son subconjuntos
     n = 0
     for j in range(1, len(geoms)):
@@ -51,9 +143,9 @@ def _resolver_traslapes(geoms: np.ndarray, grid: float) -> tuple[np.ndarray, int
                    if i < j and not geoms[i].is_empty]
         if not previas:
             continue
-        tapa = shapely.union_all(previas, grid_size=grid)
-        if shapely.intersection(geoms[j], tapa, grid_size=grid).area > 0:
-            geoms[j] = _solo_poligonos(shapely.difference(geoms[j], tapa, grid_size=grid)) or shapely.Polygon()
+        tapa = r.union(previas)
+        if r.op(shapely.intersection, geoms[j], tapa).area > 0:
+            geoms[j] = _solo_poligonos(r.op(shapely.difference, geoms[j], tapa)) or shapely.Polygon()
             n += 1
     return geoms, n
 
@@ -82,6 +174,7 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
     # sindex.query devuelve índices en orden del árbol: se reordenan para respetar rango/área de 'fuentes'
     idx = np.sort(fuentes.sindex.query(geom, predicate="intersects"))
     cand = fuentes.iloc[idx]
+    rp = _Rescates(grid)   # operaciones de la partición verificadas (resultado válido o rescate)
 
     for clase, clave in ORDEN:
         if restante.is_empty:
@@ -92,9 +185,9 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
             sub = sub[(sub["cut_ipt"] == cut) | (sub["cut_ipt"].isna())]
         if sub.empty:
             continue
-        geoms = shapely.intersection(np.asarray(sub.geometry.values, dtype=object), restante, grid_size=grid)
+        geoms = rp.op_vec(shapely.intersection, np.asarray(sub.geometry.values, dtype=object), restante)
         geoms = np.array([_solo_poligonos(g) or shapely.Polygon() for g in geoms], dtype=object)
-        geoms, n = _resolver_traslapes(geoms, grid)
+        geoms, n = _resolver_traslapes(geoms, grid, rp)
         qa["traslapes_resueltos"] += n
 
         tomadas = []
@@ -110,7 +203,7 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
             qa["instrumentos"].add(f"{r['ipt_tipo']}:{r['ipt_nombre']}")
             qa["revisar"] += int(bool(r.get("revisar")))
         if tomadas:
-            restante = shapely.difference(restante, shapely.union_all(tomadas, grid_size=grid), grid_size=grid)
+            restante = rp.op(shapely.difference, restante, rp.union(tomadas))
             restante = _solo_poligonos(restante) or shapely.Polygon()
 
     if not restante.is_empty and restante.area >= min_area:
@@ -118,41 +211,14 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
             "revisar": False, "riesgo": False, "cut": cut, "comuna": nombre, "region": region,
             "clase": "R2", "fuente": "SIN_IPT", "geometry": restante})
 
+    qa["particion_rescates"] = rp.n
     filas, rescates = _marcar_riesgo(filas, geom, riesgos, grid, min_area)
     qa["riesgo_rescates"] = rescates
-    if rescates:
-        log.warning("%s %s: %d operaciones de riesgo rescatadas con grilla de %g m", cut, nombre, rescates, GRID_RESCATE)
+    if rp.n or rescates:
+        log.warning("%s %s: operaciones GEOS rescatadas con grilla de %g m · partición %d · riesgo %d",
+                    cut, nombre, GRID_RESCATE, rp.n, rescates)
     qa["instrumentos"] = "; ".join(sorted(qa["instrumentos"]))
     return filas, qa
-
-
-# Grilla de rescate (metros) para la superposición de riesgo cuando GEOS falla con precisión flotante
-# ("non-noded intersection" entre segmentos casi coincidentes). Solo afecta el marcado de riesgo, no la partición.
-GRID_RESCATE = 0.001
-
-
-class _Rescates:
-    """Operaciones GEOS con reintento: exacta → make_valid + grilla GRID_RESCATE. Cuenta los rescates."""
-
-    def __init__(self, grid):
-        self.grid, self.n = grid, 0
-
-    def _reintentar(self, fn, *geoms):
-        self.n += 1
-        return fn(*[shapely.make_valid(g) for g in geoms], grid_size=GRID_RESCATE)
-
-    def union(self, geoms):
-        try:
-            return shapely.union_all(geoms, grid_size=self.grid)
-        except shapely.errors.GEOSException:
-            self.n += 1
-            return shapely.union_all(shapely.make_valid(np.asarray(geoms, dtype=object)), grid_size=GRID_RESCATE)
-
-    def op(self, fn, a, b):
-        try:
-            return fn(a, b, grid_size=self.grid)
-        except shapely.errors.GEOSException:
-            return self._reintentar(fn, a, b)
 
 
 def _marcar_riesgo(filas: list[dict], geom, riesgos: gpd.GeoDataFrame | None,

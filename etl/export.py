@@ -10,7 +10,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 
-from .normalize import norm_txt
+from .normalize import norm_txt, polygonal
 
 log = logging.getLogger(__name__)
 
@@ -24,20 +24,35 @@ def anotar_legal(capa: gpd.GeoDataFrame, legal: dict) -> gpd.GeoDataFrame:
     return capa
 
 
+def _validar(g: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, int, int]:
+    """Reproyectar puede invalidar polígonos casi degenerados (autointersección, anillos de <4 puntos).
+    Corrige con make_valid y se queda con la parte poligonal; elimina las que quedan vacías (astillas)."""
+    inv = ~g.is_valid
+    if not inv.any():
+        return g, 0, 0
+    g = g.copy()
+    g.loc[inv, "geometry"] = [polygonal(x) for x in g.loc[inv, "geometry"]]
+    vacias = g.geometry.isna() | g.geometry.is_empty
+    return g[~vacias], int(inv.sum() - vacias.sum()), int(vacias.sum())
+
+
 def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[dict],
              out_dir: Path, cfg: dict, sufijo: str = "nacional",
              sin_comuna: pd.DataFrame | None = None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     crs_out = cfg["crs"]["salida"]
     prec = int(cfg["build"]["precision_geojson"])
-    capa = capa.to_crs(crs_out)
+    capa, n_corr, n_elim = _validar(capa.to_crs(crs_out))
+    if n_corr or n_elim:
+        log.warning("Exportación: %d piezas inválidas tras reproyectar a %s corregidas con make_valid, "
+                    "%d degeneradas eliminadas", n_corr, crs_out, n_elim)
     tag = f"{sufijo}_{date.today():%Y%m%d}"
     productos = {}
 
     gpkg = out_dir / f"regu_ipt_{tag}.gpkg"
     capa.to_file(gpkg, layer="capa_ipt", driver="GPKG")
     if afect is not None and not afect.empty:
-        afect.to_crs(crs_out).to_file(gpkg, layer="afectaciones", driver="GPKG")
+        _validar(afect.to_crs(crs_out))[0].to_file(gpkg, layer="afectaciones", driver="GPKG")
     qa_df = pd.DataFrame(qas)
     qa_df.to_csv(out_dir / f"qa_comunas_{tag}.csv", index=False, encoding="utf-8-sig")
     if sin_comuna is not None:
@@ -67,6 +82,10 @@ def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[d
         "piezas_por_clase": capa["clase"].value_counts().to_dict(),
         "zonas_pri_a_revisar": int(capa["revisar"].fillna(False).astype(bool).sum()),
         "instrumentos_sin_comuna": len(sin_comuna) if sin_comuna is not None else None,
+        "piezas_invalidas": int((~capa.is_valid).sum()),
+        "piezas_corregidas_export": n_corr,
+        "piezas_degeneradas_eliminadas": n_elim,
+        "rescates_geos": {k: int(qa_df[k].sum()) for k in ("particion_rescates", "riesgo_rescates") if k in qa_df},
     }
     (out_dir / f"resumen_{tag}.json").write_text(json.dumps(resumen, ensure_ascii=False, indent=2), encoding="utf-8")
     productos["resumen"] = resumen
