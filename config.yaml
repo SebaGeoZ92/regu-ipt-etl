@@ -88,6 +88,14 @@ comuna_cascada:
 comuna_alias:   # "<valor tal como viene>": "<nombre BCN>"
   "Pitufquén": "Pitrufquén"          # IPT_AREA_RIESGO/PRC_Area_de_Riesgo
   "Puerto Saavedra": "Saavedra"      # IPT_AREA_RIESGO/PRC_Area_de_Riesgo (COM trae la localidad)
+  # Límites urbanos (Limites_Urbanos_PRC y PRC_<Región>/Limite_Urbano), build nacional 28-sep-2026
+  "Paiguano": "Paihuano"
+  "Guaticas": "Guaitecas"
+  "Entre Lagos": "Puyehue"           # localidad de Puyehue
+  "Llay Llay": "Llaillay"
+  "Trehuaco": "Treguaco"             # nombre oficial actual es Trehuaco; la BCN usa Treguaco
+  "La Calera": "Calera"
+  "Puerto Natales": "Natales"
 
 # Zonas de riesgo dentro de capas de zonificación (PRC, PRI, PRM, seccional): NO salen de la partición,
 # quedan en la clase de su instrumento con riesgo=True y además se copian a afectaciones.
