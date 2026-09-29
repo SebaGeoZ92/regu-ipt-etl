@@ -39,7 +39,9 @@ def aplicar_reglas(entry: dict, cfg: dict) -> dict:
     entry["pri_default"] = None
     overrides = cfg.get("overrides") or {}
     if key in overrides:
-        entry["tipo"] = overrides[key]
+        ov = overrides[key]   # "TIPO" o {tipo: TIPO, pri_default: E|U|R}
+        entry["tipo"] = ov["tipo"] if isinstance(ov, dict) else ov
+        entry["pri_default"] = ov.get("pri_default") if isinstance(ov, dict) else None
         return entry
     srv = next((r for r in cfg.get("service_rules") or [] if re.search(r["pattern"], entry["service"], re.I)), None)
     if srv and srv["tipo"] == "IGNORAR":   # exclusión deliberada del servicio (duplicados, PRDU)

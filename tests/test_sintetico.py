@@ -110,6 +110,9 @@ def test_end_to_end():
         assert tipo("IPT/PRI_Valparaiso", "Límite Urbano") == "LU"
         assert tipo("IPT/PRMS", "PRMS_USO_Suelo") == "PRM"
         assert tipo("IPT/PRC_Nuble", "PRC_Bulnes_Area_de_riesgo") == "IGNORAR"
+        # override con pri_default (gana sobre layer_rules_prioritarias, que diría LU)
+        e_ov = aplicar_reglas({"service": "IPT/PRI_Valparaiso", "layer_id": 6, "layer_name": "Límite Urbano"}, cfg)
+        assert (e_ov["tipo"], e_ov["pri_default"]) == ("PRI", "E")
 
         res = ComunaResolver(comunas, "CUT_COM", "COMUNA")
         assert res.resolve("Temuco Labranza") == "09101"

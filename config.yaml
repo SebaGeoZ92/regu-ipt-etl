@@ -75,6 +75,9 @@ layer_rules:
 overrides:
   "IPT/PRC_Valparaíso/71": PRC          # IPT_PRC_05_Los_Andes: zonificación vigente (D. 10, DO 22-01-2026)
   "IPT/PRC_Valparaíso/68": AFECTACION   # PRC_Los_Andes_R: solo 'Área de Riesgo' (OGUC 2.1.17)
+  # PROVISORIO hasta que lo confirme el arquitecto: la capa se llama "Límite Urbano" pero es el
+  # "Límite de Extensión Urbana" del PRI de San Felipe-Los Andes (11 comunas, sin comuna propia).
+  "IPT/PRI_Valparaiso/6": {tipo: PRI, pri_default: E}
 
 zone_fields: [ZONA, ZONIFICACION, ZONIFICACI, NOM_ZONA, NOMBRE_ZONA, ZONA_PRC, COD_ZONA, SIGLA, CODIGO, ZONAS, NOMBRE]
 zone_desc_fields: [DESCRIPCION, DESCRIPCIO, DESCRIP, NOMBRE_ZONA, NOM_ZONA, USO, USO_SUELO, DETALLE, OBS]

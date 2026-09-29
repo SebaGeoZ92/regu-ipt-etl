@@ -84,7 +84,7 @@ BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comuna
    - **17 comunas + "Zona sin demarcar" (cut 0) con `sin_urbano=True`** (ver `qa_comunas_nacional_*.csv`). **Huara** es sospechosa: `PRC_Huara` mide 41,1 ha, pero solo 0,9 ha caen dentro de la BCN (geometría mal ubicada en MINVU).
    - **7 capas sin comuna**:
      - COM que no calzan con la BCN: Paiguano/Paihuano, Guaticas/Guaitecas, Entre Lagos (Puyehue), Llay Llay/Llaillay, Trehuaco/Treguaco, La Calera/Calera y Puerto Natales/Natales. Se resuelven con `comuna_alias`.
-     - `PRI_Valparaiso/Límite Urbano` es en realidad un "Límite de Extensión Urbana" de 11 comunas (COM "Comunas provincias de San Felipe y Los Andes"), pero `layer_rules_prioritarias` lo tipifica como LU (U2). **Revisar el tipo.**
+     - `PRI_Valparaiso/Límite Urbano` (id 6) es del Plan Metropolitano de Valparaíso, Satélite Aconcagua (San Felipe y Los Andes, 11 comunas). **PROVISORIO** (28-sep-2026, hasta que lo confirme el arquitecto): override `{tipo: PRI, pri_default: E}` en vez de LU. Ojo: la capa trae 2 features, "Límite de Extensión Urbana" (94,6 km²) y "Límite Urbano Vigente" (74,6 km²). Como no hay campo de zona reconocido, **ambas quedan como E**; la segunda probablemente debería ser U3.
    - `revision_arquitecto.csv` nacional: 137 zonas. Incluye las `PRMS_Resguardo_*` tipificadas como PRM (pendiente).
 6. [ ] Siguiente fase: cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
 
