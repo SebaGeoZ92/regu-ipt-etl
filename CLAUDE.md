@@ -79,7 +79,13 @@ BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comuna
    - **Lumaco** sale `sin_urbano=True`: MINVU no publica PRC ni LU. Confirmar con el arquitecto o la DOM.
    - 8 zonas del PRI Lago Villarrica con `revisar=True` (Zona de vivienda, hoteleras, camping, etc.; hoy quedan en R1 por defecto). El arquitecto debe llenar `data/out/revision_arquitecto.csv` y luego se corre `importar-revision`.
 4. [x] Nombres PRC/LU que no resuelven comuna: se resuelven con la cascada. Revisar `qa_sin_comuna_<tag>.csv` en cada región.
-5. [ ] Escalar a nivel nacional. `discover` + `download` nacional listos (27-sep-2026): 579 capas en el catálogo, las 539 a descargar están en caché (117.030 features), sin fallas y 3 capas vacías. Falta el `build` nacional.
+5. [ ] Escalar a nivel nacional. `discover` + `download` listos (27-sep-2026): 579 capas en el catálogo y las 539 a descargar en caché (117.030 features). Las 3 capas vacías están vacías en origen (`download --vacias`, 28-sep).
+   `build` nacional (28-sep-2026): 25,4 min, 346 comunas, 74.833 piezas, cobertura 100,0% en todas, traslape relativo máx 2,1e-7 (Pedro Aguirre Cerda), 0 piezas inválidas y 2 rescates GEOS (La Pintana, Chañaral). Pendiente:
+   - **17 comunas + "Zona sin demarcar" (cut 0) con `sin_urbano=True`** (ver `qa_comunas_nacional_*.csv`). **Huara** es sospechosa: `PRC_Huara` mide 41,1 ha, pero solo 0,9 ha caen dentro de la BCN (geometría mal ubicada en MINVU).
+   - **7 capas sin comuna**:
+     - COM que no calzan con la BCN: Paiguano/Paihuano, Guaticas/Guaitecas, Entre Lagos (Puyehue), Llay Llay/Llaillay, Trehuaco/Treguaco, La Calera/Calera y Puerto Natales/Natales. Se resuelven con `comuna_alias`.
+     - `PRI_Valparaiso/Límite Urbano` es en realidad un "Límite de Extensión Urbana" de 11 comunas (COM "Comunas provincias de San Felipe y Los Andes"), pero `layer_rules_prioritarias` lo tipifica como LU (U2). **Revisar el tipo.**
+   - `revision_arquitecto.csv` nacional: 137 zonas. Incluye las `PRMS_Resguardo_*` tipificadas como PRM (pendiente).
 6. [ ] Siguiente fase: cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
 
 ## Entorno
