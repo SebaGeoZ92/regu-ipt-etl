@@ -44,6 +44,8 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 - `etl/normalize.py`: reglas de tipificación (override > service_rules > layer_rules), dedupe MapServer/FeatureServer y homologación de campos. También ComunaResolver con cascada (`cut_por_cascada`), `pri_envolvente`, `zona_riesgo`, `zone_overrides` y `separar_afectaciones`.
 - `etl/classify.py`: partición por comuna. Overlays en ESRI:102033, sin snapping (`grid_m: 0`), porque el snapping generaba astillas entre comunas. Los índices de `sindex.query` se ordenan para respetar el orden rango/área de las fuentes. Además: `recortar_afectaciones` e `instrumentos_sin_comuna`.
 - `etl/export.py`: GPKG (`capa_ipt` con `riesgo`, más `afectaciones` con `cut`), GeoJSON RFC7946 nacional y por región, CSV de QA (`qa_comunas` con `traslape_m2`, y `qa_sin_comuna`), resumen JSON (cobertura mín/máx, traslape máx, instrumentos sin comuna) y carga opcional a PostGIS.
+- `etl/ficha.py`: `ficha(geom_4326, gpkg) -> dict` (MVP: partición + afectaciones; `condicionantes` vacía). Contrato en `docs/CONDICIONANTES.md`. CLI: `python run.py ficha --lon X --lat Y | --wkt ...`.
+- `etl/mapa.py`: `python run.py mapa --region X` genera `data/out/mapa_<region>/`, con `index.html` autocontenido (PMTiles embebido en base64, servido desde memoria a MapLibre 4.7.1 + pmtiles 3.2.1) y `artifact.html` (fragmento para publicar). Los tiles se hacen con el driver PMTiles de GDAL 3.12 (no hay tippecanoe en Windows). Hay que usar `encoding="UTF-8"` en pyogrio y `Protocol.tilev4` de pmtiles.
 - `tests/test_sintetico.py`: escenario Temuco / Padre Las Casas / Carahue con LU duplicado, zona contenida, PRI traslapados, envolvente PRI, zonas de riesgo en PRC y PRI, COM mal escrito y afectaciones recortadas, más paginación simulada. Exige cobertura de 100% ± 0,01 y traslape < 1 m² en **cada** comuna. **Debe pasar siempre.**
 
 ## Hechos verificados del servidor MINVU (26-sep-2026)
@@ -67,6 +69,15 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 - `IPT_AREA_RIESGO/PRC_Area_de_Riesgo` trae COM mal escrito o con la localidad ("Pitufquén", "Puerto Saavedra"): se resuelve con `comuna_alias`.
 - Capas publicadas vacías (0 features, 27-sep-2026): `PRC_OHiggins/25` Palmilla–San José del Carmen, `PRC_Valparaíso/2` Calle Larga y `PRC_Valparaíso/32` San Esteban, todas de riesgo. **PENDIENTE** volver a pedirlas.
 
+## Portal IPT de MINVU (verificado el 28-sep-2026)
+
+- API pública del portal (la usa su propio frontend Nuxt): `https://portalipt-api.minvu.cl`, con `/instrumentos?estado=Vigente` (2.026 instrumentos, unos 11 MB de JSON con `tipo`, `planificacion` Comunal/Intercomunal, `comunas` como CUT INE, fechas y documentos), `/comunas` y `/regiones`.
+- Cruce con la capa nacional: 327 de 345 comunas tienen IPT comunal vigente según el portal. Discrepancias:
+  - **Lumaco** (LU de 1939) y **María Elena** (LU de Quillagua, 1944) tienen LU vigente en el portal, pero el servidor no publica su geometría.
+  - **Huara**: el instrumento comunal vigente es el **PRC de Pisagua (1966)**, que es costero. La capa `PRC_Huara` casi no toca la comuna BCN (problema de línea de costa).
+  - **Cochrane**: tiene LU en el servidor, pero el portal no registra IPT comunal vigente.
+- Las otras 14 comunas `sin_urbano` no tienen IPT comunal en el portal, así que su clasificación es correcta. Camarones y General Lagos solo tienen PRDU, que es indicativo.
+
 ## Base comunal
 
 BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comunas en EPSG:3857 y campos `cod_comuna`, `Comuna` y `Region`. Datos de 2014 a 2018 según la BCN. Se descarga con `descargar_comunas.py` o desde https://www.bcn.cl/obtienearchivo?id=repositorio/10221/10396/5/comunas_final.zip
@@ -81,7 +92,8 @@ BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comuna
 4. [x] Nombres PRC/LU que no resuelven comuna: se resuelven con la cascada. Revisar `qa_sin_comuna_<tag>.csv` en cada región.
 5. [ ] Escalar a nivel nacional. `discover` + `download` listos (27-sep-2026): 579 capas en el catálogo y las 539 a descargar en caché (117.030 features). Las 3 capas vacías están vacías en origen (`download --vacias`, 28-sep).
    `build` nacional (28-sep-2026): 25,4 min, 346 comunas, 74.833 piezas, cobertura 100,0% en todas, traslape relativo máx 2,1e-7 (Pedro Aguirre Cerda), 0 piezas inválidas y 2 rescates GEOS (La Pintana, Chañaral). Pendiente:
-   - **17 comunas + "Zona sin demarcar" (cut 0) con `sin_urbano=True`** (ver `qa_comunas_nacional_*.csv`). **Huara** es sospechosa: `PRC_Huara` mide 41,1 ha, pero solo 0,9 ha caen dentro de la BCN (geometría mal ubicada en MINVU).
+   - **17 comunas + "Zona sin demarcar" (cut 0) con `sin_urbano=True`** (ver `qa_comunas_nacional_*.csv` y la sección Portal IPT). **Huara**: el 97,8% del PRC (Pisagua, costero) queda fuera de la DPA BCN.
+   - **Pérdida costera** (`qa_fuera_dpa_*.csv`, build del 28-sep-2026): 3.416 ha de IPT comunal (PRC/LU/seccional) quedan fuera de TODAS las comunas BCN, en 77 comunas, todas costeras o insulares (máximos: Caldera 466 ha, Antofagasta 312 ha, Puerto Montt 269 ha, Iquique 212 ha en 2.500 fragmentos). La causa es que la línea de costa de la BCN está generalizada. **PENDIENTE decidir** entre (a) extender cada comuna con la huella de su propio IPT fuera de la DPA (asignada por `cut_ipt`, no por cercanía) y (b) cambiar de DPA, idealmente medido antes contra los predios SII (GEOSAL).
    - **7 capas sin comuna**:
      - COM que no calzan con la BCN: Paiguano/Paihuano, Guaticas/Guaitecas, Entre Lagos (Puyehue), Llay Llay/Llaillay, Trehuaco/Treguaco, La Calera/Calera y Puerto Natales/Natales. Se resuelven con `comuna_alias`.
      - `PRI_Valparaiso/Límite Urbano` (id 6) es del Plan Metropolitano de Valparaíso, Satélite Aconcagua (San Felipe y Los Andes, 11 comunas). **PROVISORIO** (28-sep-2026, hasta que lo confirme el arquitecto): override `{tipo: PRI, pri_default: E}` en vez de LU. Ojo: la capa trae 2 features, "Límite de Extensión Urbana" (94,6 km²) y "Límite Urbano Vigente" (74,6 km²). Como no hay campo de zona reconocido, **ambas quedan como E**; la segunda probablemente debería ser U3.
@@ -99,7 +111,7 @@ BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comuna
 ## Convenciones
 
 - Código y comentarios en español.
-- **Avance de procesos largos**: `build`, `download`, `discover` y cualquier script largo escriben su avance en `data/out/progreso.log`, una línea por comuna o capa con el formato `HH:MM:SS <región> <comuna> i/total` (para capas: `HH:MM:SS <servicio> <capa> i/total`), y además la imprimen con `flush=True`. Se usa `etl/progreso.py`: `progreso.iniciar(path)` al partir, que reescribe el archivo, y `progreso.paso(grupo, nombre, i, total)` por unidad. Los scripts sueltos (en el scratchpad, por ejemplo) siguen la misma convención.
+- **Avance de procesos largos**: `build`, `download`, `discover` y cualquier script largo escriben su avance en `data/out/progreso.log`, una línea por comuna o capa con el formato `HH:MM:SS <región> <comuna> i/total` (para capas: `HH:MM:SS <servicio> <capa> i/total`), y además la imprimen con `flush=True`. Se usa `etl/progreso.py`: `progreso.iniciar(path)` al partir, que reescribe el archivo, y `progreso.paso(grupo, nombre, i, total)` por unidad. Los scripts sueltos (en el scratchpad, por ejemplo) siguen la misma convención. Para seguirlo en PowerShell 5.1: `Get-Content data\out\progreso.log -Wait -Tail 5 -Encoding utf8` (sin `-Encoding utf8` las tildes salen como "RegiÃ³n").
 - No hacer commit de `data/` (caché y salidas pesan GB).
 - Cualquier cambio en `classify.py` debe mantener cobertura del 100% y cero traslapes en el test.
 - Antes de "arreglar" una clasificación legal, preguntar: el criterio legal lo valida el arquitecto, no el código.
