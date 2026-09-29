@@ -252,6 +252,13 @@ def test_end_to_end():
         assert {p["clase"] for p in f["particion"]} == {"U1", "R2"}
         assert abs(sum(p["pct"] for p in f["particion"]) - 100) <= 0.01, f["particion"]
         assert ficha(Point(-72.8, -38.5), prod["gpkg"])["fuera_de_cobertura"] is True
+
+        # mapa: PMTiles con los campos de la ficha (el HTML necesita red para MapLibre y no se prueba aquí)
+        from etl.mapa import CAMPOS, generar_pmtiles
+        pm = generar_pmtiles(gpd.read_file(prod["gpkg"], layer="capa_ipt"), tmp / "out" / "capa.pmtiles", 6, 10)
+        leido = gpd.read_file(pm, layer="ipt")
+        assert pm.stat().st_size > 0 and len(leido) > 0 and set(CAMPOS) - {"cut"} <= set(leido.columns)
+        assert "Límite Urbano Padre Las Casas" in set(leido.ipt_nombre)   # textos en UTF-8 (no cp1252)
         assert gpd.read_file(prod["gpkg"], layer="capa_ipt").is_valid.all()
         gj = json.loads(Path(prod["geojson"]).read_text(encoding="utf-8"))
         assert gj["features"][0]["properties"]["norma_titulo"]

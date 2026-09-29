@@ -10,6 +10,7 @@ Uso:
   python run.py importar-revision data/out/revision_arquitecto.csv   # decisiones del arquitecto → zone_overrides
   python run.py ficha --lon -72.59 --lat -38.74 [--gpkg ...]       # ficha normativa preliminar (JSON)
   python run.py ficha --wkt "POLYGON((...))"
+  python run.py mapa --region ARAUCANIA                             # HTML autocontenido con PMTiles (para enviar)
 """
 from __future__ import annotations
 
@@ -276,6 +277,23 @@ def cmd_ficha(cfg, args):
     print(a_json(ficha(geom, gpkg)))
 
 
+def cmd_mapa(cfg, args):
+    from etl.mapa import generar_mapa
+    if not args.region:
+        sys.exit("Uso: python run.py mapa --region ARAUCANIA [--gpkg archivo]  (un mapa por región)")
+    c = cfg["comunas"]
+    comunas = cargar_comunas(cfg, args.region)
+    sufijo = norm_txt(args.region).lower().replace(" ", "_")
+    out = ROOT / cfg["paths"]["out"]
+    gpkg = Path(args.gpkg) if args.gpkg else (sorted(out.glob(f"regu_ipt_{sufijo}_*.gpkg")) or [None])[-1]
+    if not gpkg or not gpkg.exists():
+        sys.exit(f"No hay GPKG de la región. Corre primero: python run.py build --region {args.region}")
+    legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
+    region = str(comunas[c["field_region"]].mode().iloc[0])
+    r = generar_mapa(gpkg, comunas, c["field_cut"], c["field_nombre"], legal, region, out / f"mapa_{sufijo}")
+    log.info("Mapa: %s (%.1f MB; PMTiles %.1f MB) · variante para publicar: %s", r["html"], r["mb_html"], r["mb_pmtiles"], r["fragmento"])
+
+
 def cmd_importar_revision(cfg, args):
     if not args.archivo:
         sys.exit("Uso: python run.py importar-revision <csv>")
@@ -288,7 +306,7 @@ def cmd_importar_revision(cfg, args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha"])
+    ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha", "mapa"])
     ap.add_argument("--lon", type=float, help="ficha: longitud (EPSG:4326)")
     ap.add_argument("--lat", type=float, help="ficha: latitud (EPSG:4326)")
     ap.add_argument("--wkt", help="ficha: geometría WKT en EPSG:4326 (punto o polígono)")
@@ -319,6 +337,8 @@ def main():
         cmd_importar_revision(cfg, args)
     if args.cmd == "ficha":
         cmd_ficha(cfg, args)
+    if args.cmd == "mapa":
+        cmd_mapa(cfg, args)
 
 
 if __name__ == "__main__":
