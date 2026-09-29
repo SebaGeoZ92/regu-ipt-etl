@@ -144,7 +144,9 @@ def load_layer(path, entry: dict, cfg: dict, resolver: ComunaResolver) -> gpd.Ge
         return None
     gdf = gpd.GeoDataFrame.from_features(raw["features"], crs="EPSG:4326")
     props = [c for c in gdf.columns if c != "geometry"]
-    zf = pick_field(props, cfg["zone_fields"])
+    # campo de zona por capa (campo_zona en config) para capas cuyo nombre de zona está en un campo no estándar
+    zf = (cfg.get("campo_zona") or {}).get(f"{entry['service']}/{entry['layer_id']}")
+    zf = zf if zf in props else pick_field(props, cfg["zone_fields"])
     df = pick_field(props, cfg["zone_desc_fields"], excluir=zf)
     cf = pick_field(props, cfg["comuna_fields"])
 

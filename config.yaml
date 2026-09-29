@@ -118,8 +118,15 @@ afectacion_comunal: "/PRC_"
 # ipt_nombre y zona tal como salen en capa_ipt (se comparan sin tildes, mayúsculas ni guiones).
 # E/U/R solo aplican a PRI/PRM; AFECTACION saca la zona de la partición (PRI, PRM o PRC).
 # PENDIENTE: lo llena el arquitecto para el PRI Lago Villarrica (zonas con revisar=True).
-zone_overrides: {}
-#  "Villarrica Pucon|Zona de vivienda": E
+# PROVISORIOS hasta que los confirme el arquitecto (28-sep-2026): las dos entradas "Límite Urbano|..." son
+# PRI_Valparaiso/6, Satélite Aconcagua (importar-revision reescribe este bloque, por eso el comentario va aquí).
+zone_overrides:
+  "Límite Urbano|Límite de Extensión Urbana": E
+  "Límite Urbano|Límite Urbano Vigente": U
+
+# Campo de zona por capa ("<servicio>/<id>": CAMPO) cuando no es uno de zone_fields
+campo_zona:
+  "IPT/PRI_Valparaiso/6": NOM      # "Límite de Extensión Urbana" / "Límite Urbano Vigente"
 
 # Subclase de zonas PRI/PRM (regex sobre ZONA + DESCRIPCIÓN, en mayúsculas sin tildes).
 # Orden importa: E antes que U porque "extension urbana" contiene "URBAN".

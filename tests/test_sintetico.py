@@ -292,9 +292,12 @@ def test_end_to_end():
         assert generar_revision(capa, csv_rev).loc[0, "decision"] == "e"   # rebuild no borra decisiones
         cfg_tmp = tmp / "config.yaml"
         cfg_tmp.write_text((ROOT / "config.yaml").read_text(encoding="utf-8"), encoding="utf-8")
-        assert importar_revision(csv_rev, cfg_tmp) == {"Temuco PLC|ZX": "E"}
+        previos = cfg.get("zone_overrides") or {}
+        fusion = importar_revision(csv_rev, cfg_tmp)
+        assert fusion == {**previos, "Temuco PLC|ZX": "E"}   # se fusiona con los overrides existentes
         cfg2 = yaml.safe_load(cfg_tmp.read_text(encoding="utf-8"))
-        assert cfg2["zone_overrides"] == {"Temuco PLC|ZX": "E"} and cfg2["pri_subclase"] == cfg["pri_subclase"]
+        assert cfg2["zone_overrides"] == fusion and cfg2["pri_subclase"] == cfg["pri_subclase"]
+        assert cfg2["campo_zona"] == cfg["campo_zona"]       # el resto del config.yaml queda intacto
         e_pri, p_pri = next((e, p) for e, p in catalogo if e["layer_name"] == "PRI_Temuco_PLC")
         zx = load_layer(p_pri, e_pri, cfg2, res).set_index("zona").loc["ZX"]
         assert zx["fuente"] == "PRI_E" and not zx["revisar"]
