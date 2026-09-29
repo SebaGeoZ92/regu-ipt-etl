@@ -45,7 +45,7 @@ service_rules:
   - {pattern: "/Patrimonio$", tipo: AFECTACION}
   - {pattern: "/Limites_Urbanos$", tipo: LU}
   - {pattern: "/PRDU_", tipo: IGNORAR}          # Plan Regional de Desarrollo Urbano: indicativo, no fija normas urbanísticas
-  - {pattern: "/PRC_Nuble$", tipo: IGNORAR}     # duplicado de PRC_Ñuble · VERIFICAR cuál está vigente
+  - {pattern: "/PRC_Nuble$", tipo: IGNORAR}     # duplicado exacto de PRC_Ñuble (25/25 capas idénticas, verificado 28-sep-2026; ver CLAUDE.md)
   - {pattern: "/PRI_Extension_urbana$", tipo: PRI, pri_default: E}
   - {pattern: "/PRI_Area_Rural$", tipo: PRI, pri_default: R}
   - {pattern: "/(PRMS|PRMC|PREMVAL)$", tipo: PRM}

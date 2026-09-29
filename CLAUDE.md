@@ -50,7 +50,12 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 
 - Carpeta `IPT` con servicios `PRC_<Región>` (una capa por plan, con capas de riesgo y vialidad mezcladas), `PRI_*`, `PRMS`, `PRMC`, `PREMVAL`, `PRDU_*`, `Limites_Urbanos`, `IPT_AREA_RIESGO` y `Patrimonio`.
 - Cada servicio está publicado como MapServer y como FeatureServer, a veces con distinta cantidad de capas. Se deduplica por (servicio, nombre de capa) y gana MapServer.
-- `PRC_Nuble` y `PRC_Ñuble` están duplicados. Hoy se ignora `PRC_Nuble`. **PENDIENTE verificar cuál está vigente.**
+- `PRC_Nuble` y `PRC_Ñuble` son **duplicados exactos** (verificado el 28-sep-2026). Se ignora `PRC_Nuble` y se usa `PRC_Ñuble`. Evidencia:
+  - Ambos tienen 25 capas con los mismos nombres y el mismo número de features por capa, en MapServer y FeatureServer.
+  - Un hash MD5 de atributos (sin OBJECTID ni SHAPE) y de geometrías (EPSG:4326, 6 decimales, ordenadas) coincide en las **25/25** capas.
+  - Las fechas de decreto (`P_DO`) son iguales. Ninguno publica `editingInfo`/`lastEditDate`, e `info/iteminfo` no trae `modified`/`created`, así que no se puede saber cuál es más antiguo.
+  - Solo difieren en el GUID (`PRC_Nuble` 9D9E2392…, `PRC_Ñuble` E92287FC…) y en el título (`PRC_Nuble` frente a `PRC Ñuble`). Se usa `PRC_Ñuble` por ser el nombre canónico con Ñ; con contenido idéntico, la elección no cambia el resultado.
+  - En `PRC_Portezuelo` (id 15), `orderByFields=OBJECTID` da error 400 en ambos servicios; se comparó sin ordenar.
 - El servidor es inestable (errores del Web Adaptor): se trabaja siempre sobre el caché `data/raw`.
 - MaxRecordCount 2000. Los SRID de origen varían por servicio; se pide `outSR=4326`.
 - Esquema reciente de capas: REG/COM/LOC/ZONA/NOM. `COM` trae errores de tipeo ("Padre de Las Casas", "Teodoro Schmitdt"); ADMIN y NOM vienen bien.
