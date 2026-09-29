@@ -29,6 +29,7 @@ from etl.classify import clasificar, instrumentos_sin_comuna, recortar_afectacio
 from etl.export import anotar_legal, cargar_postgis, escribir
 from etl.normalize import ComunaResolver, load_layer, norm_txt, normalizar_catalogo, separar_afectaciones
 from etl.revision import generar_revision, importar_revision
+from etl import progreso
 
 ROOT = Path(__file__).parent
 log = logging.getLogger("regu-ipt")
@@ -186,7 +187,8 @@ def cmd_download(cfg, args):
         refresh = True
     if args.capas or args.vacias:
         log.info("Se vuelven a pedir %d capas: %s", len(cat), [f"{e['service']}/{e['layer_id']}" for e in cat])
-    for e in cat:
+    for i, e in enumerate(cat, 1):
+        progreso.paso(e["service"], e["layer_name"], i, len(cat))
         try:
             antes = features_en_cache(raw_path(raw, e))
             p = download_entry(cli, e, raw, refresh=refresh)
@@ -208,7 +210,9 @@ def cmd_build(cfg, args):
                               c["field_cut"], c["field_nombre"])
     raw = ROOT / cfg["paths"]["raw"]
     capas, afect = [], []
-    for e in leer_catalogo(cfg):
+    cat = leer_catalogo(cfg)
+    for i, e in enumerate(cat, 1):
+        progreso.paso(e["service"], e["layer_name"], i, len(cat))
         p = raw_path(raw, e)
         if not p.exists():
             continue
@@ -272,6 +276,9 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
     cfg = cargar_cfg()
+    if args.cmd in ("discover", "download", "build", "all"):
+        # convención: procesos largos dejan su avance en data/out/progreso.log (ver etl/progreso.py)
+        progreso.iniciar(ROOT / cfg["paths"]["out"] / "progreso.log")
     if args.cmd in ("discover", "all"):
         cmd_discover(cfg, args)
     if args.cmd == "catalogo":

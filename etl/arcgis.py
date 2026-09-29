@@ -17,6 +17,8 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+from . import progreso
+
 log = logging.getLogger(__name__)
 
 
@@ -131,8 +133,10 @@ def discover(client: ArcGISClient, folders: list[str], service_filter=None) -> l
     """Recorre servicios y capas hoja. service_filter: callable(service_name, service_info) -> bool."""
     catalogo = []
     for folder in folders:
-        for s in client.list_services(folder):
+        servicios = client.list_services(folder)
+        for i, s in enumerate(servicios, 1):
             name, stype = s["name"], s["type"]
+            progreso.paso(folder, f"{name}/{stype}", i, len(servicios))
             try:
                 sinfo = client.service_info(name, stype)
             except ArcGISError as e:

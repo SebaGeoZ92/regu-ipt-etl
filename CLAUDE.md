@@ -86,6 +86,7 @@ BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comuna
 ## Convenciones
 
 - Código y comentarios en español.
+- **Avance de procesos largos**: `build`, `download`, `discover` y cualquier script largo escriben su avance en `data/out/progreso.log`, una línea por comuna o capa con el formato `HH:MM:SS <región> <comuna> i/total` (para capas: `HH:MM:SS <servicio> <capa> i/total`), y además la imprimen con `flush=True`. Se usa `etl/progreso.py`: `progreso.iniciar(path)` al partir, que reescribe el archivo, y `progreso.paso(grupo, nombre, i, total)` por unidad. Los scripts sueltos (en el scratchpad, por ejemplo) siguen la misma convención.
 - No hacer commit de `data/` (caché y salidas pesan GB).
 - Cualquier cambio en `classify.py` debe mantener cobertura del 100% y cero traslapes en el test.
 - Antes de "arreglar" una clasificación legal, preguntar: el criterio legal lo valida el arquitecto, no el código.

@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import shapely
 
+from . import progreso
 from .normalize import COMUNALES
 
 log = logging.getLogger(__name__)
@@ -251,12 +252,14 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
                .drop(columns=["_r", "_a"]).reset_index(drop=True))
 
     todas, qas = [], []
-    for _, c in comunas.iterrows():
+    total = len(comunas)
+    for i, (_, c) in enumerate(comunas.iterrows(), 1):
         filas, qa = clasificar_comuna(str(c[f_cut]), c[f_nom], c[f_reg], c.geometry,
                                       fuentes, grid, min_area, riesgos)
         todas.extend(filas)
         qas.append(qa)
         log.info("%s %-22s %3d piezas · %s", c[f_cut], c[f_nom], len(filas), qa["instrumentos"] or "sin IPT")
+        progreso.paso(c[f_reg], c[f_nom], i, total)
 
     capa = gpd.GeoDataFrame(todas, geometry="geometry", crs=crs_t)
     # QA de cobertura y área por clase (en equivalente de área)

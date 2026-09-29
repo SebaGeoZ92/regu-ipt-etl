@@ -1,5 +1,6 @@
 """Prueba end-to-end con datos sintéticos (sin red). Ejecutar: python -m pytest tests -q  (o python tests/test_sintetico.py)"""
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -18,6 +19,7 @@ from etl.export import anotar_legal, escribir  # noqa: E402
 from etl.classify import instrumentos_sin_comuna, recortar_afectaciones, umbral_traslape  # noqa: E402
 from etl.normalize import ComunaResolver, aplicar_reglas, cut_por_cascada, load_layer, separar_afectaciones  # noqa: E402
 from etl.revision import generar_revision, importar_revision  # noqa: E402
+from etl import progreso  # noqa: E402
 
 REG = "Región de La Araucanía"
 
@@ -157,7 +159,13 @@ def test_end_to_end():
         afect_rec = recortar_afectaciones(afect_todas, comunas, cfg, "CUT_COM", "COMUNA")
         assert afect_rec.loc[afect_rec.zona == "AR-3", "cut"].tolist() == ["09101"]   # el desborde a PLC se descarta
         riesgos_rec = afect_rec[afect_rec.riesgo.astype(bool)]
+        progreso.iniciar(tmp / "out" / "progreso.log")
         capa, qas = clasificar(comunas, fuentes, cfg, "CUT_COM", "COMUNA", "REGION", riesgos_rec)
+        # Convención de avance: una línea por comuna "HH:MM:SS región comuna i/total"
+        lineas = (tmp / "out" / "progreso.log").read_text(encoding="utf-8").splitlines()
+        assert [re.fullmatch(rf"\d\d:\d\d:\d\d {REG} (.+) (\d)/3", x).group(1, 2) for x in lineas] == \
+            [("Temuco", "1"), ("Padre Las Casas", "2"), ("Carahue", "3")], lineas
+        progreso.iniciar(None)
 
         # 1. Cobertura de 100% ± 0,01 en TODAS las comunas y sin traslapes
         #    ('intersects' y no 'overlaps': este último no ve contención ni igualdad)
