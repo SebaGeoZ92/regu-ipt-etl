@@ -86,7 +86,9 @@ BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comuna
      - COM que no calzan con la BCN: Paiguano/Paihuano, Guaticas/Guaitecas, Entre Lagos (Puyehue), Llay Llay/Llaillay, Trehuaco/Treguaco, La Calera/Calera y Puerto Natales/Natales. Se resuelven con `comuna_alias`.
      - `PRI_Valparaiso/Límite Urbano` (id 6) es del Plan Metropolitano de Valparaíso, Satélite Aconcagua (San Felipe y Los Andes, 11 comunas). **PROVISORIO** (28-sep-2026, hasta que lo confirme el arquitecto): override `{tipo: PRI, pri_default: E}` en vez de LU. Ojo: la capa trae 2 features, "Límite de Extensión Urbana" (94,6 km²) y "Límite Urbano Vigente" (74,6 km²). Como no hay campo de zona reconocido, **ambas quedan como E**; la segunda probablemente debería ser U3.
    - `revision_arquitecto.csv` nacional: 137 zonas. Incluye las `PRMS_Resguardo_*` tipificadas como PRM (pendiente).
-6. [ ] Siguiente fase: cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
+6. [ ] **MVP (prioridad actual)**: `ficha()` solo con partición + afectaciones (sin condicionantes), y un mapa HTML de La Araucanía con PMTiles (clic → clase, instrumento, zona, norma_titulo, aviso) que se pueda enviar a una persona para probarlo.
+7. [ ] **Fase siguiente: condicionantes territoriales** (humedales urbanos, capacidad de uso CIREN, bosque nativo CONAF, SNASPE). Especificación en `docs/CONDICIONANTES.md`. **No implementar todavía.** Empieza con su "Paso 0" (acceso, licencia y fecha de cada fuente, documentados antes de escribir código). El contrato de `ficha()` del MVP debe dejar espacio para la lista `condicionantes`.
+8. [ ] Cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
 
 ## Entorno
 
