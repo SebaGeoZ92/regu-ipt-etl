@@ -117,35 +117,67 @@ def clasificar_comuna(cut: str, nombre: str, region: str, geom, fuentes: gpd.Geo
             "revisar": False, "riesgo": False, "cut": cut, "comuna": nombre, "region": region,
             "clase": "R2", "fuente": "SIN_IPT", "geometry": restante})
 
-    filas = _marcar_riesgo(filas, geom, riesgos, grid, min_area)
+    filas, rescates = _marcar_riesgo(filas, geom, riesgos, grid, min_area)
+    qa["riesgo_rescates"] = rescates
+    if rescates:
+        log.warning("%s %s: %d operaciones de riesgo rescatadas con grilla de %g m", cut, nombre, rescates, GRID_RESCATE)
     qa["instrumentos"] = "; ".join(sorted(qa["instrumentos"]))
     return filas, qa
 
 
+# Grilla de rescate (metros) para la superposición de riesgo cuando GEOS falla con precisión flotante
+# ("non-noded intersection" entre segmentos casi coincidentes). Solo afecta el marcado de riesgo, no la partición.
+GRID_RESCATE = 0.001
+
+
+class _Rescates:
+    """Operaciones GEOS con reintento: exacta → make_valid + grilla GRID_RESCATE. Cuenta los rescates."""
+
+    def __init__(self, grid):
+        self.grid, self.n = grid, 0
+
+    def _reintentar(self, fn, *geoms):
+        self.n += 1
+        return fn(*[shapely.make_valid(g) for g in geoms], grid_size=GRID_RESCATE)
+
+    def union(self, geoms):
+        try:
+            return shapely.union_all(geoms, grid_size=self.grid)
+        except shapely.errors.GEOSException:
+            self.n += 1
+            return shapely.union_all(shapely.make_valid(np.asarray(geoms, dtype=object)), grid_size=GRID_RESCATE)
+
+    def op(self, fn, a, b):
+        try:
+            return fn(a, b, grid_size=self.grid)
+        except shapely.errors.GEOSException:
+            return self._reintentar(fn, a, b)
+
+
 def _marcar_riesgo(filas: list[dict], geom, riesgos: gpd.GeoDataFrame | None,
-                   grid: float, min_area: float) -> list[dict]:
+                   grid: float, min_area: float) -> tuple[list[dict], int]:
     """Riesgo como superposición: corta cada pieza contra la unión de los polígonos de riesgo de la comuna
     (todas las fuentes) y marca riesgo=True en la parte interior. La clase no cambia. Si una de las dos
-    partes queda bajo min_area no se corta (no se pierde cobertura)."""
+    partes queda bajo min_area no se corta (no se pierde cobertura). Devuelve (filas, n_rescates)."""
     for f in filas:
         f["riesgo"] = False
     if riesgos is None or riesgos.empty:
-        return filas
+        return filas, 0
     idx = riesgos.sindex.query(geom, predicate="intersects")
     if not len(idx):
-        return filas
-    zona_r = _solo_poligonos(shapely.intersection(
-        shapely.union_all(riesgos.geometry.values[idx], grid_size=grid), geom, grid_size=grid))
+        return filas, 0
+    r = _Rescates(grid)
+    zona_r = _solo_poligonos(r.op(shapely.intersection, r.union(riesgos.geometry.values[idx]), geom))
     if zona_r is None or zona_r.area < min_area:
-        return filas
+        return filas, r.n
     out = []
     for f in filas:
         g = f["geometry"]
         if not g.intersects(zona_r):
             out.append(f)
             continue
-        dentro = _solo_poligonos(shapely.intersection(g, zona_r, grid_size=grid))
-        fuera = _solo_poligonos(shapely.difference(g, zona_r, grid_size=grid))
+        dentro = _solo_poligonos(r.op(shapely.intersection, g, zona_r))
+        fuera = _solo_poligonos(r.op(shapely.difference, g, zona_r))
         a_in = dentro.area if dentro is not None else 0.0
         a_out = fuera.area if fuera is not None else 0.0
         if a_in < min_area:
@@ -154,7 +186,7 @@ def _marcar_riesgo(filas: list[dict], geom, riesgos: gpd.GeoDataFrame | None,
             out.append(f | {"riesgo": True})
         else:
             out += [f | {"geometry": fuera}, f | {"geometry": dentro, "riesgo": True}]
-    return out
+    return out, r.n
 
 
 def umbral_traslape(area_comuna_m2: float) -> float:

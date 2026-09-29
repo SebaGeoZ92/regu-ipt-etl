@@ -256,6 +256,22 @@ def test_end_to_end():
 
 
 
+def test_rescate_geos():
+    """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
+    reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
+    from etl.classify import GRID_RESCATE, _Rescates
+
+    def fragil(a, b, grid_size=None):
+        if grid_size != GRID_RESCATE:
+            raise shapely.errors.GEOSException("TopologyException: found non-noded intersection")
+        return shapely.intersection(a, b, grid_size=grid_size)
+
+    r = _Rescates(None)
+    out = r.op(fragil, box(0, 0, 10, 10), box(5, 5, 15, 15))
+    assert r.n == 1 and abs(out.area - 25) < 1e-6
+    assert r.op(shapely.intersection, box(0, 0, 2, 2), box(1, 1, 3, 3)).area == 1 and r.n == 1
+
+
 def test_paginacion_arcgis():
     from etl.arcgis import ArcGISClient
     feats = [{"type": "Feature", "properties": {"i": i}, "geometry": None} for i in range(4500)]
@@ -281,5 +297,6 @@ def test_paginacion_arcgis():
 
 if __name__ == "__main__":
     test_end_to_end()
+    test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
