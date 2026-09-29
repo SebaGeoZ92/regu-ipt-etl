@@ -295,7 +295,11 @@ select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     const f = map.queryRenderedFeatures(pt, { layers: ["ipt"] })[0];
     marca.setLngLat(lngLat).addTo(map);
     if (!f) {
-      $("ficha").innerHTML = `<h2>Punto consultado</h2><p>Este punto queda fuera de la capa (mar, otra región o fuera de los límites comunales).</p>`;
+      $("ficha").innerHTML = `<h2>Punto consultado</h2>
+        <div class="clase"><span class="chip" style="background:var(--line)">—</span><span class="titulo">Fuera de cobertura DPA</span></div>
+        <p class="resumen">El punto no cae en ninguna comuna de esta región (División Político-Administrativa BCN) ni en la
+        extensión costera de un instrumento comunal. Puede ser mar, otra región o un borde costero mal representado.</p>
+        <dl><dt>Coordenadas</dt><dd class="mono">${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}</dd></dl>`;
       map.getSource("sel").setData({ type: "FeatureCollection", features: [] });
       return false;
     }

@@ -7,7 +7,9 @@ Contrato (docs/CONDICIONANTES.md), MVP sin condicionantes:
       "riesgo_pct": float,
       "afectaciones": [{"tipo", "capa", "zona", "detalle", "riesgo", "pct"}],
       "condicionantes": [],            # fase siguiente
-      "fuera_de_cobertura": bool,      # el punto/predio cae fuera de la partición (p.ej. mar, o fuera de la DPA)
+      "cobertura": "completa" | "parcial" | "fuera_dpa",
+      "fuera_de_cobertura": bool,      # cobertura != "completa"
+      "motivo": str | None,            # texto para el usuario cuando no es "completa"
       "aviso": "..."
     }
 Lee el GPKG de build (capas capa_ipt y afectaciones) con filtro por bbox, que usa el índice espacial del GPKG.
@@ -24,6 +26,9 @@ import shapely
 from shapely.geometry.base import BaseGeometry
 
 CRS_AREA = "ESRI:102033"
+MOTIVO_FUERA_DPA = ("Fuera de cobertura DPA: el punto no cae en ninguna comuna de la División Político-Administrativa "
+                    "(BCN) ni en la extensión costera de un instrumento comunal. Puede ser mar o un borde costero "
+                    "mal representado.")
 AVISO_DEF = ("Información referencial. No reemplaza el Certificado de Informaciones Previas (CIP), "
              "que emite solo la Dirección de Obras Municipales (OGUC art. 1.4.4).")
 
@@ -48,9 +53,15 @@ def ficha(geom_4326: BaseGeometry, gpkg: str | Path) -> dict:
     afec = _leer(gpkg, "afectaciones", geom_4326)
     aviso = _txt(capa["aviso"].iloc[0]) if len(capa) and "aviso" in capa else None
     out = {"comuna": None, "cut": None, "region": None, "particion": [], "riesgo_pct": 0.0,
-           "afectaciones": [], "condicionantes": [], "fuera_de_cobertura": capa.empty, "aviso": aviso or AVISO_DEF}
+           "afectaciones": [], "condicionantes": [], "cobertura": "completa", "fuera_de_cobertura": False,
+           "motivo": None, "aviso": aviso or AVISO_DEF}
+
+    def _fuera_dpa(o):
+        o.update(cobertura="fuera_dpa", fuera_de_cobertura=True, motivo=MOTIVO_FUERA_DPA)
+        return o
+
     if capa.empty:
-        return out
+        return _fuera_dpa(out)
 
     g_area = gpd.GeoSeries([geom_4326], crs=4326).to_crs(CRS_AREA).iloc[0]
     capa = capa.to_crs(CRS_AREA)
@@ -63,9 +74,8 @@ def ficha(geom_4326: BaseGeometry, gpkg: str | Path) -> dict:
         capa = capa[capa["a"] > 0]
         total = float(g_area.area)
     cubierto = float(capa["a"].sum())
-    out["fuera_de_cobertura"] = cubierto == 0
-    if capa.empty:
-        return out
+    if capa.empty or cubierto == 0:
+        return _fuera_dpa(out)
 
     principal = capa.loc[capa["a"].idxmax()]
     out.update(comuna=_txt(principal.get("comuna")), cut=_txt(principal.get("cut")), region=_txt(principal.get("region")))
@@ -79,8 +89,10 @@ def ficha(geom_4326: BaseGeometry, gpkg: str | Path) -> dict:
                          "ipt": _txt(r.ipt_nombre), "zona": _txt(r.zona), "norma_titulo": _txt(r.norma_titulo),
                          "riesgo_pct": round(100 * r.a_riesgo / total, 2)} for r in part.itertuples()]
     out["riesgo_pct"] = round(100 * float(capa.loc[capa["riesgo"], "a"].sum()) / total, 2)
-    if cubierto < total * 0.9999 and not es_punto:
-        out["fuera_de_cobertura"] = True   # parte del polígono cae fuera de la partición
+    if cubierto < total * 0.9999 and not es_punto:   # parte del polígono cae fuera de la partición
+        out.update(cobertura="parcial", fuera_de_cobertura=True,
+                   motivo=f"{round(100 * (1 - cubierto / total), 2)}% del polígono queda fuera de cobertura DPA "
+                          f"(no cae en ninguna comuna).")
 
     if len(afec):
         afec = afec.to_crs(CRS_AREA)

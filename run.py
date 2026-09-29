@@ -28,7 +28,8 @@ import yaml
 from pyproj import Transformer
 
 from etl.arcgis import ArcGISClient, ArcGISError, discover, download_entry, raw_path
-from etl.classify import clasificar, instrumentos_sin_comuna, ipt_fuera_de_dpa, recortar_afectaciones
+from etl.classify import (ampliar_comunas, clasificar, extension_costera, instrumentos_sin_comuna,
+                          recortar_afectaciones)
 from etl.export import anotar_legal, cargar_postgis, escribir
 from etl.normalize import ComunaResolver, load_layer, norm_txt, normalizar_catalogo, separar_afectaciones
 from etl.revision import generar_revision, importar_revision
@@ -231,6 +232,13 @@ def cmd_build(cfg, args):
         log.warning("No hay capas IPT descargadas: todo quedará como R2")
     fuentes = gpd.GeoDataFrame(pd.concat(capas, ignore_index=True), crs=4326) if capas else \
         gpd.GeoDataFrame(columns=["fuente", "cut_ipt", "geometry"], geometry="geometry", crs=4326)
+    # Pérdida costera: cada comuna se amplía con la huella de su propio IPT que queda fuera de la DPA BCN
+    fuera_dpa, ext = extension_costera(fuentes, cargar_comunas(cfg, None), comunas, cfg,
+                                       c["field_cut"], c["field_nombre"], c["field_region"])
+    if ext:
+        comunas = ampliar_comunas(comunas, ext, cfg, c["field_cut"])
+        log.warning("Extensión costera: %.1f ha de IPT comunal fuera de la DPA BCN en %d comunas (máx %s %.1f ha)",
+                    fuera_dpa.ha_extension.sum(), len(ext), fuera_dpa.comuna.iloc[0], fuera_dpa.ha_fuera.iloc[0])
     afect_crudas = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326) if afect else None
     afect_gdf = None
     if afect_crudas is not None:
@@ -243,12 +251,7 @@ def cmd_build(cfg, args):
     sin_comuna = instrumentos_sin_comuna(qa_com, comunas, c["field_nombre"])
     for _, r in sin_comuna.iterrows():
         log.warning("Sin comuna: %s/%s (%d features) toca %s", r["servicio"], r["capa"], r["features"], r["comunas_tocadas"])
-    fuera_dpa = ipt_fuera_de_dpa(fuentes, cargar_comunas(cfg, None), comunas, cfg,
-                                 c["field_cut"], c["field_nombre"], c["field_region"])
-    if not fuera_dpa.empty:
-        log.warning("IPT comunal fuera de la DPA BCN: %.1f ha en %d comunas (máx %s %.1f ha)", fuera_dpa.ha_fuera.sum(),
-                    len(fuera_dpa), fuera_dpa.comuna.iloc[0], fuera_dpa.ha_fuera.iloc[0])
-    legal = json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
+    legal =json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
     capa = anotar_legal(capa, legal)
     sufijo = norm_txt(args.region).lower().replace(" ", "_") if args.region else "nacional"
     prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo, sin_comuna, fuera_dpa)

@@ -278,36 +278,63 @@ def recortar_afectaciones(afect: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, cf
     return out.reset_index(drop=True)
 
 
-def ipt_fuera_de_dpa(fuentes: gpd.GeoDataFrame, comunas_todas: gpd.GeoDataFrame, comunas_proc: gpd.GeoDataFrame,
-                     cfg: dict, f_cut: str, f_nom: str, f_reg: str) -> pd.DataFrame:
-    """QA de pérdida costera: superficie de instrumentos comunales (PRC/LU/seccional) que queda fuera de TODAS
-    las comunas BCN (la partición no la cubre). Por comuna del instrumento (cut_ipt), solo comunas procesadas.
-    'lado' es heurístico: oeste del centroide de la comuna → probablemente costa."""
-    cols = ["cut", "comuna", "region", "ha_ipt", "ha_fuera", "pct_fuera", "lado", "n_partes"]
+def extension_costera(fuentes: gpd.GeoDataFrame, comunas_todas: gpd.GeoDataFrame, comunas_proc: gpd.GeoDataFrame,
+                      cfg: dict, f_cut: str, f_nom: str, f_reg: str) -> tuple[pd.DataFrame, dict]:
+    """Pérdida costera: huella de los instrumentos comunales (PRC/LU/seccional) de cada comuna procesada que queda
+    fuera de TODAS las comunas BCN (la línea de costa BCN está generalizada). Devuelve (QA, {cut: geometría en
+    crs de área}) con la extensión de cada comuna, asignada por cut_ipt (no por cercanía). Si dos comunas
+    reclaman el mismo sector, gana la de menor CUT (sin traslapes). 'lado' es heurístico (oeste = costa probable)."""
+    cols = ["cut", "comuna", "region", "ha_ipt", "ha_fuera", "pct_fuera", "ha_extension", "lado", "n_partes"]
     crs_a = cfg["crs"]["area"]
     s = fuentes[fuentes["ipt_tipo"].isin(COMUNALES) & fuentes["cut_ipt"].notna()]
     s = s[s["cut_ipt"].isin(set(comunas_proc[f_cut].astype(str)))]
     if s.empty:
-        return pd.DataFrame(columns=cols)
+        return pd.DataFrame(columns=cols), {}
     s = s.to_crs(crs_a)
     dpa = shapely.union_all(shapely.make_valid(comunas_todas.to_crs(crs_a).geometry.values))
     shapely.prepare(dpa)
     com = comunas_todas.to_crs(crs_a).set_index(comunas_todas[f_cut].astype(str))
-    filas = []
-    for cut, g in s.groupby("cut_ipt"):
+    filas, ext, tomado = [], {}, shapely.Polygon()
+    for cut, g in sorted(s.groupby("cut_ipt"), key=lambda t: t[0]):
         huella = shapely.union_all(shapely.make_valid(g.geometry.values))
         if shapely.within(huella, dpa):
             continue
         fuera = _solo_poligonos(shapely.difference(huella, dpa))
         if fuera is None or fuera.area < 1.0:
             continue
+        propia = _solo_poligonos(shapely.difference(fuera, tomado)) if not tomado.is_empty else fuera
+        if propia is not None and propia.area >= 1.0:
+            ext[cut] = propia
+            tomado = shapely.union_all([tomado, propia])
         cx = com.geometry[cut].centroid.x if cut in com.index else huella.centroid.x
         filas.append({"cut": cut, "comuna": com[f_nom].get(cut), "region": com[f_reg].get(cut),
                       "ha_ipt": round(huella.area / 1e4, 2), "ha_fuera": round(fuera.area / 1e4, 2),
                       "pct_fuera": round(100 * fuera.area / huella.area, 2),
+                      "ha_extension": round(ext[cut].area / 1e4, 2) if cut in ext else 0.0,
                       "lado": "oeste (costa probable)" if fuera.centroid.x < cx else "este",
                       "n_partes": len(getattr(fuera, "geoms", [fuera]))})
-    return pd.DataFrame(filas, columns=cols).sort_values("ha_fuera", ascending=False).reset_index(drop=True)
+    df = pd.DataFrame(filas, columns=cols).sort_values("ha_fuera", ascending=False).reset_index(drop=True)
+    return df, ext
+
+
+def ipt_fuera_de_dpa(fuentes, comunas_todas, comunas_proc, cfg, f_cut, f_nom, f_reg) -> pd.DataFrame:
+    """Solo el QA de extension_costera()."""
+    return extension_costera(fuentes, comunas_todas, comunas_proc, cfg, f_cut, f_nom, f_reg)[0]
+
+
+def ampliar_comunas(comunas: gpd.GeoDataFrame, ext: dict, cfg: dict, f_cut: str) -> gpd.GeoDataFrame:
+    """Comunas BCN + su extensión costera (huella de su propio IPT fuera de la DPA). Agrega 'ha_extension_costera'.
+    La partición, las afectaciones y la cobertura del QA se miden contra esta geometría ampliada."""
+    # La extensión se lleva al CRS de las comunas y solo se une a las comunas que la tienen: reproyectar ida y
+    # vuelta todas las geometrías movía los límites compartidos y generaba astillas en la comuna vecina.
+    crs_a = cfg["crs"]["area"]
+    out = comunas.copy()
+    cuts = out[f_cut].astype(str)
+    ext_c = dict(zip(ext, gpd.GeoSeries(list(ext.values()), crs=crs_a).to_crs(comunas.crs))) if ext else {}
+    out["ha_extension_costera"] = [round(ext[c].area / 1e4, 2) if c in ext else 0.0 for c in cuts]
+    out["geometry"] = [shapely.union_all([shapely.make_valid(g), ext_c[c]]) if c in ext_c else g
+                       for g, c in zip(out.geometry, cuts)]
+    return out
 
 
 def instrumentos_sin_comuna(fuentes: gpd.GeoDataFrame, comunas: gpd.GeoDataFrame, f_nom: str) -> pd.DataFrame:
@@ -370,6 +397,8 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
     union_com = {cut: shapely.union_all(g.values).area for cut, g in capa_a.groupby("cut").geometry}
     suma_com = capa.groupby("cut")["area_m2"].sum()
     riesgo_com = capa[capa["riesgo"].astype(bool)].groupby("cut")["area_m2"].sum()
+    ext_com = (dict(zip(comunas[f_cut].astype(str), comunas["ha_extension_costera"]))
+               if "ha_extension_costera" in comunas else {})
     for qa in qas:
         tot = float(area_com.get(qa["cut"], np.nan))
         fila = resumen.loc[qa["cut"]] if qa["cut"] in resumen.index else None
@@ -381,6 +410,7 @@ def clasificar(comunas: gpd.GeoDataFrame, fuentes: gpd.GeoDataFrame, cfg: dict,
         qa["pct_riesgo"] = round(100 * float(riesgo_com.get(qa["cut"], 0.0)) / tot, 3) if tot else None
         qa["traslape_m2"] = round(max(0.0, float(suma_com.get(qa["cut"], 0.0)) - union_com.get(qa["cut"], 0.0)), 1)
         qa["area_comuna_m2"] = round(tot, 1)
+        qa["ha_extension_costera"] = float(ext_com.get(qa["cut"], 0.0))
         qa["traslape_ok"] = bool(qa["traslape_m2"] < umbral_traslape(tot))
         qa["sin_urbano"] = (qa["pct_U1"] or 0) + (qa["pct_U2"] or 0) + (qa["pct_U3"] or 0) == 0
     capa.insert(0, "id", [f"{c}-{i:05d}" for i, c in enumerate(capa["cut"])])

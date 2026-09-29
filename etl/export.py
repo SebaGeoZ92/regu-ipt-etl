@@ -85,6 +85,7 @@ def escribir(capa: gpd.GeoDataFrame, afect: gpd.GeoDataFrame | None, qas: list[d
         "zonas_pri_a_revisar": int(capa["revisar"].fillna(False).astype(bool).sum()),
         "instrumentos_sin_comuna": len(sin_comuna) if sin_comuna is not None else None,
         "ipt_fuera_dpa_ha": round(float(fuera_dpa["ha_fuera"].sum()), 1) if fuera_dpa is not None and len(fuera_dpa) else 0.0,
+        "extension_costera_ha": round(float(qa_df["ha_extension_costera"].sum()), 1) if "ha_extension_costera" in qa_df else 0.0,
         "piezas_invalidas": int((~capa.is_valid).sum()),
         "piezas_corregidas_export": n_corr,
         "piezas_degeneradas_eliminadas": n_elim,

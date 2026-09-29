@@ -17,7 +17,8 @@ sys.path.insert(0, str(ROOT))
 from etl.arcgis import raw_path  # noqa: E402
 from etl.classify import clasificar  # noqa: E402
 from etl.export import anotar_legal, escribir  # noqa: E402
-from etl.classify import instrumentos_sin_comuna, ipt_fuera_de_dpa, recortar_afectaciones, umbral_traslape  # noqa: E402
+from etl.classify import (ampliar_comunas, extension_costera, instrumentos_sin_comuna,  # noqa: E402
+                          recortar_afectaciones, umbral_traslape)
 from etl.normalize import ComunaResolver, aplicar_reglas, cut_por_cascada, load_layer, separar_afectaciones  # noqa: E402
 from etl.revision import generar_revision, importar_revision  # noqa: E402
 from etl.ficha import ficha  # noqa: E402
@@ -155,10 +156,14 @@ def test_end_to_end():
         assert set(fuentes.loc[fuentes.ipt_tipo == "LU", "cut_ipt"]) == {"09112"}
         assert instrumentos_sin_comuna(fuentes, comunas, "COMUNA").empty
         # QA de pérdida costera: solo la parte de ZU-4 al norte de -38.6 queda fuera de todas las comunas
-        fd = ipt_fuera_de_dpa(fuentes, comunas, comunas, cfg, "CUT_COM", "COMUNA", "REGION")
+        fd, ext = extension_costera(fuentes, comunas, comunas, cfg, "CUT_COM", "COMUNA", "REGION")
         esperado = gpd.GeoSeries([box(-72.60, -38.60, -72.55, -38.58)], crs=4326).to_crs(cfg["crs"]["area"]).area[0] / 1e4
         # (tolerancia 1%: las aristas de las cajas reproyectadas no siguen exactamente el paralelo -38,6)
         assert fd.cut.tolist() == ["09101"] and abs(fd.ha_fuera.iloc[0] / esperado - 1) < 0.01, (fd.to_dict("records"), esperado)
+        # Extensión costera: Temuco se amplía con la huella de su PRC fuera de la DPA; el resto de comunas no cambia
+        comunas_bcn = comunas
+        comunas = ampliar_comunas(comunas_bcn, ext, cfg, "CUT_COM")
+        assert list(ext) == ["09101"] and abs(comunas.set_index("CUT_COM").ha_extension_costera["09101"] / esperado - 1) < 0.01
 
         afect_todas = gpd.GeoDataFrame(pd.concat(afect, ignore_index=True), crs=4326)
         riesgos = afect_todas[afect_todas.riesgo.astype(bool)]
@@ -251,7 +256,12 @@ def test_end_to_end():
         f = ficha(box(-72.53, -38.75, -72.51, -38.70), prod["gpkg"])  # cruza ZU-2 (U1) y R2
         assert {p["clase"] for p in f["particion"]} == {"U1", "R2"}
         assert abs(sum(p["pct"] for p in f["particion"]) - 100) <= 0.01, f["particion"]
-        assert ficha(Point(-72.8, -38.5), prod["gpkg"])["fuera_de_cobertura"] is True
+        f = ficha(Point(-72.8, -38.5), prod["gpkg"])                   # mar: ninguna comuna ni extensión
+        assert f["cobertura"] == "fuera_dpa" and f["fuera_de_cobertura"] is True and "DPA" in f["motivo"]
+        f = ficha(Point(-72.575, -38.59), prod["gpkg"])                # extensión costera de Temuco (fuera de la BCN)
+        assert f["cobertura"] == "completa" and f["cut"] == "09101"
+        assert [(p["clase"], p["zona"]) for p in f["particion"]] == [("U1", "ZU-4")]
+        assert q["09101"]["ha_extension_costera"] > 0 and q["09102"]["ha_extension_costera"] == 0
 
         # mapa: PMTiles con los campos de la ficha (el HTML necesita red para MapLibre y no se prueba aquí)
         from etl.mapa import CAMPOS, generar_pmtiles
