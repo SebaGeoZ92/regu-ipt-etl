@@ -20,6 +20,7 @@ from etl.export import anotar_legal, escribir  # noqa: E402
 from etl.classify import instrumentos_sin_comuna, ipt_fuera_de_dpa, recortar_afectaciones, umbral_traslape  # noqa: E402
 from etl.normalize import ComunaResolver, aplicar_reglas, cut_por_cascada, load_layer, separar_afectaciones  # noqa: E402
 from etl.revision import generar_revision, importar_revision  # noqa: E402
+from etl.ficha import ficha  # noqa: E402
 from etl import progreso  # noqa: E402
 
 REG = "Región de La Araucanía"
@@ -238,6 +239,19 @@ def test_end_to_end():
         prod = escribir(capa, afect_gdf, qas, tmp / "out", cfg, "test")
         assert Path(prod["geojson"]).exists() and Path(prod["gpkg"]).exists()
         assert prod["resumen"]["piezas_invalidas"] == 0
+
+        # ficha(): punto → una sola clase; polígono U1+R2 → % suman 100; riesgo; fuera de cobertura
+        from shapely.geometry import Point
+        f = ficha(Point(-72.52, -38.69), prod["gpkg"])
+        assert f["cut"] == "09101" and [(p["clase"], p["zona"], p["pct"]) for p in f["particion"]] == [("U1", "ZU-2", 100.0)]
+        assert f["riesgo_pct"] == 0 and not f["fuera_de_cobertura"] and f["condicionantes"] == [] and f["aviso"]
+        f = ficha(Point(-72.5875, -38.7075), prod["gpkg"])            # dentro de AR-2 (riesgo en el PRC)
+        assert f["particion"][0]["clase"] == "U1" and f["riesgo_pct"] == 100.0
+        assert "AR-2" in {a["zona"] for a in f["afectaciones"]}
+        f = ficha(box(-72.53, -38.75, -72.51, -38.70), prod["gpkg"])  # cruza ZU-2 (U1) y R2
+        assert {p["clase"] for p in f["particion"]} == {"U1", "R2"}
+        assert abs(sum(p["pct"] for p in f["particion"]) - 100) <= 0.01, f["particion"]
+        assert ficha(Point(-72.8, -38.5), prod["gpkg"])["fuera_de_cobertura"] is True
         assert gpd.read_file(prod["gpkg"], layer="capa_ipt").is_valid.all()
         gj = json.loads(Path(prod["geojson"]).read_text(encoding="utf-8"))
         assert gj["features"][0]["properties"]["norma_titulo"]

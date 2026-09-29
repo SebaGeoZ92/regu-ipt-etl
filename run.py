@@ -8,6 +8,8 @@ Uso:
   python run.py build    [--region ARAUCANIA] [--postgis]
   python run.py all      [--region ARAUCANIA] [--postgis]
   python run.py importar-revision data/out/revision_arquitecto.csv   # decisiones del arquitecto → zone_overrides
+  python run.py ficha --lon -72.59 --lat -38.74 [--gpkg ...]       # ficha normativa preliminar (JSON)
+  python run.py ficha --wkt "POLYGON((...))"
 """
 from __future__ import annotations
 
@@ -257,6 +259,23 @@ def cmd_build(cfg, args):
         cargar_postgis(capa, afect_gdf)
 
 
+def cmd_ficha(cfg, args):
+    from shapely import wkt as _wkt
+    from shapely.geometry import Point
+
+    from etl.ficha import a_json, ficha, ultimo_gpkg
+    if args.wkt:
+        geom = _wkt.loads(args.wkt)
+    elif args.lon is not None and args.lat is not None:
+        geom = Point(args.lon, args.lat)
+    else:
+        sys.exit("Uso: python run.py ficha --lon X --lat Y  |  --wkt \"POLYGON((...))\"  [--gpkg archivo]")
+    gpkg = Path(args.gpkg) if args.gpkg else ultimo_gpkg(ROOT / cfg["paths"]["out"])
+    if not gpkg or not gpkg.exists():
+        sys.exit("No hay GPKG de build. Corre primero: python run.py build")
+    print(a_json(ficha(geom, gpkg)))
+
+
 def cmd_importar_revision(cfg, args):
     if not args.archivo:
         sys.exit("Uso: python run.py importar-revision <csv>")
@@ -269,7 +288,11 @@ def cmd_importar_revision(cfg, args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision"])
+    ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha"])
+    ap.add_argument("--lon", type=float, help="ficha: longitud (EPSG:4326)")
+    ap.add_argument("--lat", type=float, help="ficha: latitud (EPSG:4326)")
+    ap.add_argument("--wkt", help="ficha: geometría WKT en EPSG:4326 (punto o polígono)")
+    ap.add_argument("--gpkg", help="ficha: GPKG de build (por defecto el más reciente, preferente nacional)")
     ap.add_argument("archivo", nargs="?", help="importar-revision: CSV revision_arquitecto con 'decision' llena")
     ap.add_argument("--region", help="regex sobre el nombre de región (ej. ARAUCANIA)")
     ap.add_argument("--refresh", action="store_true", help="vuelve a descargar aunque exista caché")
@@ -294,6 +317,8 @@ def main():
         cmd_build(cfg, args)
     if args.cmd == "importar-revision":
         cmd_importar_revision(cfg, args)
+    if args.cmd == "ficha":
+        cmd_ficha(cfg, args)
 
 
 if __name__ == "__main__":
