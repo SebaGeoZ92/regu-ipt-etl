@@ -36,6 +36,7 @@ build:
 # Solo patrones inequívocos: dentro de servicios PRI/PRMS hay capas de riesgo, LU o vialidad.
 layer_rules_prioritarias:
   - {pattern: "(riesgo|patrimon|zona[_ ]?t[ií]pica|vialid)", tipo: AFECTACION}
+  - {pattern: "^PRMS_Resguardo", tipo: AFECTACION}   # áreas de resguardo de infraestructura (PRMS)
   - {pattern: "l[ií]mites?[_ ]?urbanos?", tipo: LU}
 
 # Tipo de capa según el SERVICIO (se evalúa antes que layer_rules; gana la primera coincidencia).
