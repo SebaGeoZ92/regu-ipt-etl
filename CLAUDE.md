@@ -29,7 +29,7 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
   - Las zonas de riesgo van con rango 3 y `revisar=False`, y se copian a `afectaciones`.
   - Después de la partición de cada comuna, cada pieza se corta contra la unión de todos los polígonos de riesgo de la comuna, incluidas las capas AFECTACION de riesgo. La parte interior sale con `riesgo=True` y conserva la clase y la zona base. Nunca deben producir R2 dentro de un PRC o PRI.
 - **`zone_overrides`** `"<ipt_nombre>|<zona>": E|U|R|AFECTACION`: ganan sobre `pri_subclase`. AFECTACION saca la zona de la partición. Flujo con el arquitecto:
-  - `build` genera `data/out/revision_arquitecto.csv`, una fila por zona con `revisar=True` y la columna `decision` vacía; conserva las decisiones ya llenas.
+  - `build` genera `data/out/revision_arquitecto_<nacional|región>.csv` (uno por alcance, para que un build regional no pise el nacional), una fila por zona con `revisar=True` y la columna `decision` vacía; conserva las decisiones ya llenas.
   - `python run.py importar-revision <csv>` las lleva a `zone_overrides`.
 - **`layer_rules_prioritarias`** se evalúan antes de `service_rules`, salvo en servicios IGNORAR. Solo patrones inequívocos: riesgo, patrimonio, zona típica y vialidad → AFECTACION; límite urbano → LU.
 - **Comuna de instrumentos comunales, en cascada**: `comuna_fields` (COM…) → ADMIN sin "Municipalidad de " → NOM sin "Límite urbano de " (ambos solo si traen el prefijo) → `comuna_alias` → nombre de capa. Lo que no resuelve queda en `qa_sin_comuna_<tag>.csv`, porque sin CUT el instrumento puede normar la comuna vecina.
@@ -114,7 +114,7 @@ Si se migra, basta con cambiar `paths.comunas` y los tres `field_*` en config. A
 2. [x] Piloto: `python run.py download --region ARAUCANIA` y luego `python run.py build --region ARAUCANIA`.
 3. [ ] QA piloto (28-sep-2026): 32 comunas, cobertura 100% en todas, traslape máx 0,4 m² (bajo el umbral relativo en todas), 0 instrumentos sin comuna. Pendiente:
    - **Lumaco** sale `sin_urbano=True`: MINVU no publica PRC ni LU. Confirmar con el arquitecto o la DOM.
-   - 8 zonas del PRI Lago Villarrica con `revisar=True` (Zona de vivienda, hoteleras, camping, etc.; hoy quedan en R1 por defecto). El arquitecto debe llenar `data/out/revision_arquitecto.csv` y luego se corre `importar-revision`.
+   - 8 zonas del PRI Lago Villarrica con `revisar=True` (Zona de vivienda, hoteleras, camping, etc.; hoy quedan en R1 por defecto). El arquitecto debe llenar `data/out/revision_arquitecto_araucania.csv` (o el nacional) y luego se corre `importar-revision`.
 4. [x] Nombres PRC/LU que no resuelven comuna: se resuelven con la cascada. Revisar `qa_sin_comuna_<tag>.csv` en cada región.
 5. [ ] Escalar a nivel nacional. `discover` + `download` listos (27-sep-2026): 579 capas en el catálogo y las 539 a descargar en caché (117.030 features). Las 3 capas vacías están vacías en origen (`download --vacias`, 28-sep).
    `build` nacional (28-sep-2026): 25,4 min, 346 comunas, 74.833 piezas, cobertura 100,0% en todas, traslape relativo máx 2,1e-7 (Pedro Aguirre Cerda), 0 piezas inválidas y 2 rescates GEOS (La Pintana, Chañaral). Pendiente:
@@ -123,7 +123,7 @@ Si se migra, basta con cambiar `paths.comunas` y los tres `field_*` en config. A
    - **7 capas sin comuna**:
      - COM que no calzan con la BCN: Paiguano/Paihuano, Guaticas/Guaitecas, Entre Lagos (Puyehue), Llay Llay/Llaillay, Trehuaco/Treguaco, La Calera/Calera y Puerto Natales/Natales. Se resuelven con `comuna_alias`.
      - `PRI_Valparaiso/Límite Urbano` (id 6) es del Plan Metropolitano de Valparaíso, Satélite Aconcagua (San Felipe y Los Andes, 11 comunas). **PROVISORIO** (28-sep-2026, hasta que lo confirme el arquitecto): override `{tipo: PRI, pri_default: E}` en vez de LU. La zona se lee de `NOM` (`campo_zona` en config) y se separa por polígono con `zone_overrides`, ambos **PROVISORIOS**: "Límite de Extensión Urbana" (94,6 km²) → E y "Límite Urbano Vigente" (74,6 km²) → U (U3).
-   - `revision_arquitecto.csv` nacional: 137 zonas. Incluye las `PRMS_Resguardo_*` tipificadas como PRM (pendiente).
+   - `revision_arquitecto_nacional.csv`: 137 zonas (el 29-sep, antes de este cambio, el build regional pisó el archivo nacional: regenerarlo con el próximo build nacional). Incluye las `PRMS_Resguardo_*` tipificadas como PRM (pendiente).
 6. [ ] **MVP (prioridad actual)**: `ficha()` solo con partición + afectaciones (sin condicionantes), y un mapa HTML de La Araucanía con PMTiles (clic → clase, instrumento, zona, norma_titulo, aviso) que se pueda enviar a una persona para probarlo.
 7. [ ] **Fase siguiente: condicionantes territoriales, como fuentes bajo demanda.** Especificación en `docs/FUENTES_BAJO_DEMANDA.md`, y en `docs/CONDICIONANTES.md` para la ficha.
    - Hecho (29-sep-2026): esquema de contrato, seis contratos en estado `propuesta` (CONADI tierras indígenas y ADI, SAG subdivisiones, CIREN capacidad de uso, CONAF bosque nativo, MMA humedales urbanos), registro de demanda en `ficha()` y `run.py fuentes estado|validar`.

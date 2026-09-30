@@ -7,7 +7,7 @@ Uso:
   python run.py download [--region ARAUCANIA] [--refresh] [--capas IPT/PRC_Maule/3,...] [--vacias]
   python run.py build    [--region ARAUCANIA] [--postgis]
   python run.py all      [--region ARAUCANIA] [--postgis]
-  python run.py importar-revision data/out/revision_arquitecto.csv   # decisiones del arquitecto → zone_overrides
+  python run.py importar-revision data/out/revision_arquitecto_nacional.csv   # decisiones del arquitecto → zone_overrides
   python run.py ficha --lon -72.59 --lat -38.74 [--gpkg ...]       # ficha normativa preliminar (JSON)
   python run.py ficha --wkt "POLYGON((...))"
   python run.py mapa --region ARAUCANIA                             # HTML autocontenido con PMTiles (para enviar)
@@ -264,9 +264,10 @@ def cmd_build(cfg, args):
            .rename("features").reset_index())
     inv.to_csv(Path(prod["gpkg"]).with_name(Path(prod["gpkg"]).stem.replace("regu_ipt_", "inventario_servidor_") + ".csv"),
                index=False, encoding="utf-8-sig")
-    rev = generar_revision(capa, ROOT / cfg["paths"]["out"] / "revision_arquitecto.csv")
-    log.info("revision_arquitecto.csv: %d zonas con revisar=True (%d ya decididas)",
-             len(rev), int((rev["decision"] != "").sum()))
+    # Un archivo por alcance (nacional o región): un build regional no pisa las decisiones del nacional
+    p_rev = ROOT / cfg["paths"]["out"] / f"revision_arquitecto_{sufijo}.csv"
+    rev = generar_revision(capa, p_rev)
+    log.info("%s: %d zonas con revisar=True (%d ya decididas)", p_rev.name, len(rev), int((rev["decision"] != "").sum()))
     log.info("Listo: %s", json.dumps(prod["resumen"], ensure_ascii=False))
     if args.postgis:
         cargar_postgis(capa, afect_gdf)
