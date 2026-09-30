@@ -449,9 +449,12 @@ def cmd_muestra(cfg, args):
     dest.mkdir(parents=True, exist_ok=True)
     g = dest / "muestra.gpkg"
     g.unlink(missing_ok=True)
+    from etl.mapa import unir_vigencia
     for capa in ("capa_ipt", "afectaciones"):
         d = gpd.read_file(gpkg, layer=capa)
         d = d[d["cut"].isin(cuts)].drop(columns=[x for x in ("attrs_raw",) if x in d])
+        if capa == "capa_ipt":   # contrato de docs/SIG_LAYOUTS.md: incluye la vigencia (ipt_norma, ipt_fecha, …)
+            d = unir_vigencia(d, gpkg.parent / "vigencia_match.csv")
         d.to_file(g, layer=capa, driver="GPKG")
     sel.rename(columns={c["field_cut"]: "cut", c["field_nombre"]: "comuna", c["field_region"]: "region"}) \
        [["cut", "comuna", "region", "geometry"]].to_file(g, layer="comunas", driver="GPKG")
