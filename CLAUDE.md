@@ -91,6 +91,17 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 
 BCN SIIT, División comunal: `data/base/comunas_bcn/comunas.shp`, con 346 comunas en EPSG:3857 y campos `cod_comuna`, `Comuna` y `Region`. Datos de 2014 a 2018 según la BCN. Se descarga con `descargar_comunas.py` o desde https://www.bcn.cl/obtienearchivo?id=repositorio/10221/10396/5/comunas_final.zip
 
+### Alternativas de DPA con mejor línea de costa (evaluadas el 29-sep-2026, sin adoptar)
+
+| Opción | Qué es | Costa | Acceso | Evaluación |
+|---|---|---|---|---|
+| **DPA 2023 SUBDERE** (con IGM, DIFROL e INE) | Polígonos de comunas, provincias y regiones. Límites interiores de SUBDERE, límite internacional de DIFROL y **costa e islas del IGM** | 1:50.000, SIRGAS-Chile | `https://ide.subdere.gov.cl/descargas/SHP/Limite_DPA_03082023.rar` (262 MB, HEAD 200, publicado el 21-feb-2024). También en geoportal.cl y datos.gob.cl | **Recomendada.** Es oficial, trae la mejor costa disponible y SUBDERE declara actualización anual. Hay que verificar que tenga 346 comunas y códigos compatibles con el CUT. |
+| DPA de Chile 2026 (hub ArcGIS del Observatorio de Ciudades UC) | Republicación en ArcGIS de la DPA oficial | Igual que su fuente | ArcGIS Hub (servicio REST) | Útil si se quiere consumir por REST, pero no es la fuente primaria. Confirmar versión y licencia. |
+| Cartografía del Censo 2024 (INE) | Cartografía censal país (GeoParquet) y base cartográfica APC 2023 (GDB/SHP) | Base APC 2023, compatible con la DPA 2023 | ine.gob.cl, Geodatos abiertos | Buena para cruces estadísticos. Para límites comunales conviene la DPA SUBDERE. |
+| BCN SIIT (la actual) | División comunal de 2014 a 2018 | Generalizada: 3.416 ha de IPT quedan fuera | Ya en `data/base` | Se mantiene con `extension_costera` mientras no se migre. |
+
+Si se migra, basta con cambiar `paths.comunas` y los tres `field_*` en config. Antes hay que comparar comuna por comuna el área y el QA de pérdida costera contra la BCN, y medir con los predios SII (GEOSAL) cuántos quedan fuera de cada DPA.
+
 ## Estado y próximos pasos
 
 1. [x] `python run.py catalogo`: ajustadas las capas IGNORADAS. Quedan ignorados a propósito `PRC_Nuble` y los PRDU.
