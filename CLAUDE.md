@@ -71,7 +71,16 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 
 ## Portal IPT de MINVU (verificado el 28-sep-2026)
 
-- API pública del portal (la usa su propio frontend Nuxt): `https://portalipt-api.minvu.cl`, con `/instrumentos?estado=Vigente` (2.026 instrumentos, unos 11 MB de JSON con `tipo`, `planificacion` Comunal/Intercomunal, `comunas` como CUT INE, fechas y documentos), `/comunas` y `/regiones`.
+- API pública del portal (la usa su propio frontend Nuxt; la base sale de `__NUXT__.config.public.apiURL`): `https://portalipt-api.minvu.cl`. Cliente en `etl/portal.py` (`PortalIPT`), con caché en `data/raw/portal/`, 1 s de pausa entre solicitudes y reintentos con backoff. **Usar siempre el caché**; `--refresh` solo cuando haga falta.
+  - `GET /instrumentos?estado=Vigente`: lista de unos 11 MB con 2.026 instrumentos (PRC 1.467, PRM 324, LU 125, PS 77, PRI 29, PRDU 4, incluidas modificaciones). Campos útiles:
+    - `id`, `codigo`, `denominacion`, `planificacion` (Comunal/Intercomunal), `tipo` (PRC, PS, LU, PRI, PRM, PRDU) y `comunas` (lista de CUT INE).
+    - `clasificacion` ("Instrumento de origen", "Modificación"…), `numeroDocumento`, `fechaInicioVigencia` e `instrumentosDescendientesIds` (texto "1058, 1059").
+    - `documentos`: lista de `{tipo, nombre, url}`.
+    - Fechas de publicación y derogación.
+  - `GET /instrumentos/{id}`: lo mismo, más `instrumentosBase`, `relacionesBase`/`relacionesDescendientes` y `plantilla`.
+  - `GET /comunas`: `{idComuna, idProvincia, nombre, codigoCompuestoComunaINE, activo}`.
+  - `GET /regiones`: `{idRegion, nombre, ordinal, ordenGeografico, codigoRegionINE, activo}`.
+  - **Ordenanzas**: 4.006 documentos. De ellos, 792 son ordenanzas: 101 de tipo "Ordenanza" y 691 "Publicación D. O. con Ordenanza". Los demás son planos (1.697, JPG), "Publicación D. O." (553), decretos (355), memorias (292), estudios (175) y otros. Casi todos son PDF en `instrumentosdeplanificacion.minvu.cl/files/maps/<n>/<archivo>.pdf`; un HEAD de prueba dio 200 `application/pdf`. Algunos enlazan a SharePoint, `portaltransparencia.cl` o sitios municipales. El número y tipo de norma (Decreto o Resolución N°) viene en `documentos[].nombre`. **No descargar en masa todavía.**
 - Cruce con la capa nacional: 327 de 345 comunas tienen IPT comunal vigente según el portal. Discrepancias:
   - **Lumaco** (LU de 1939) y **María Elena** (LU de Quillagua, 1944) tienen LU vigente en el portal, pero el servidor no publica su geometría.
   - **Huara**: el instrumento comunal vigente es el **PRC de Pisagua (1966)**, que es costero. La capa `PRC_Huara` casi no toca la comuna BCN (problema de línea de costa).
