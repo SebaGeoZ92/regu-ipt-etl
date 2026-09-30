@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 import jsonschema
+import geopandas as gpd
 import numpy as np
 import pymupdf
 import pytest
@@ -36,7 +37,7 @@ def test_pdf_vectorial_y_aviso(pdf):
 
 
 def test_escala_medida_en_pdf(pdf):
-    meta=json.loads(pdf.with_suffix('.json').read_text())
+    meta=json.loads(pdf.with_suffix('.json').read_text(encoding='utf-8'))
     with pymupdf.open(pdf) as doc:
         p=doc[0]; sx,sy=meta['barra_origen_mm']; pt=72/25.4
         # Medir los cinco rectángulos dibujados de la barra, en coordenadas PDF.
@@ -71,6 +72,25 @@ def test_snapshot(pdf):
 def test_plantilla_invalida():
     cfg=plantilla('lamina_comuna'); cfg['tamano_texto_pt']=6
     with pytest.raises(jsonschema.ValidationError,match='minimum'):
-        jsonschema.validate(cfg,json.loads((SIG/'layouts/_esquema.json').read_text()))
+        jsonschema.validate(cfg,json.loads((SIG/'layouts/_esquema.json').read_text(encoding='utf-8')))
     r=subprocess.run([sys.executable,'-m','sig.render','--layout','no_existe','--cut','09101','--salida','/tmp/no.pdf'],cwd=ROOT,capture_output=True,text=True)
     assert r.returncode!=0 and 'error:' in r.stderr
+
+
+def test_muestra_sin_vigencia_opcional(tmp_path):
+    origen = ROOT/'samples/temuco/muestra.gpkg'
+    muestra = tmp_path/'sin_vigencia.gpkg'
+    comunas = gpd.read_file(origen, layer='comunas')
+    comunas.to_file(muestra, layer='comunas', driver='GPKG')
+    capa = gpd.read_file(origen, layer='capa_ipt').drop(
+        columns=['ipt_norma', 'ipt_fecha', 'ipt_ultmod', 'ord_url', 'fecha_extraccion'],
+        errors='ignore',
+    )
+    capa.to_file(muestra, layer='capa_ipt', driver='GPKG')
+    salida = tmp_path/'sin_vigencia.pdf'
+    generar('09101', salida, muestra, ROOT/'samples/temuco/capa_ipt_araucania.pmtiles', plantilla('lamina_comuna'))
+    with pymupdf.open(salida) as doc:
+        texto_pdf = doc[0].get_text()
+        assert 'Sin decreto en la muestra' in texto_pdf
+        assert 'Sin fecha en la muestra' in texto_pdf
+        assert plantilla('lamina_comuna')['aviso'] in texto_pdf

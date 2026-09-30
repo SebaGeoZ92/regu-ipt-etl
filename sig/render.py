@@ -26,9 +26,9 @@ CRS = 'EPSG:32718'
 
 def plantilla(nombre):
     ruta = SIG / 'layouts' / f'{nombre}.json'
-    cfg = json.loads(ruta.read_text())
+    cfg = json.loads(ruta.read_text(encoding='utf-8'))
     try:
-        jsonschema.validate(cfg, json.loads((SIG / 'layouts/_esquema.json').read_text()))
+        jsonschema.validate(cfg, json.loads((SIG / 'layouts/_esquema.json').read_text(encoding='utf-8')))
     except jsonschema.ValidationError as e:
         raise ValueError(f'Plantilla inválida ({e.json_path}): {e.message}') from e
     return cfg
@@ -117,12 +117,16 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     limite = make_valid(seleccion.geometry.iloc[0])
     capa = gpd.read_file(gpkg,layer='capa_ipt')
     capa = capa[capa.cut.astype(str).str.zfill(5)==cut].copy()
-    requeridos = {'clase','riesgo','area_m2','ipt_nombre','ipt_norma','ipt_fecha','ipt_ultmod'}
+    requeridos = {'clase','riesgo','area_m2','ipt_nombre'}
     if capa.empty or not requeridos.issubset(capa.columns): raise ValueError('Muestra vacía o contrato incompleto')
+    # La vigencia es opcional en el contrato; nunca se infiere si falta.
+    for campo in ('ipt_norma', 'ipt_fecha', 'ipt_ultmod', 'fecha_extraccion'):
+        if campo not in capa.columns:
+            capa[campo] = ''
     areas = capa.groupby('clase').area_m2.sum()
     if not set(areas.index).issubset(COLORES): raise ValueError('Clase normativa desconocida')
     capa = capa.to_crs(CRS)
-    legal = json.loads((ROOT/'legal_refs.json').read_text())
+    legal = json.loads((ROOT/'legal_refs.json').read_text(encoding='utf-8'))
     salida = Path(salida); salida.parent.mkdir(parents=True,exist_ok=True)
     c = canvas.Canvas(str(salida),pagesize=(420*mm,297*mm),pageCompression=1,invariant=1)
     c.setTitle(f'Situación normativa del suelo · Comuna de {nombre}')
@@ -212,12 +216,12 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     rx,ry=cfg['rotulo_mm']; sha=hashlib.sha256(Path(gpkg).read_bytes()).hexdigest()[:12]
     texto(c,rx,ry,cfg['proyecto'],10,True)
     texto(c,rx,ry-5,f'Emisión: {cfg["fecha"]} · WGS 84 / UTM 18S (EPSG:32718) · '+cfg['fuentes'],8)
-    texto(c,rx,ry-10,f'Datos: muestra {Path(gpkg).name} · SHA256 {sha} · extracción '+str(capa.fecha_extraccion.dropna().max()),7)
+    texto(c,rx,ry-10,f'Datos: muestra {Path(gpkg).name} · SHA256 {sha} · extracción '+(str(capa.fecha_extraccion.dropna().max()) if capa.fecha_extraccion.fillna('').ne('').any() else 'Sin fecha en la muestra'),7)
     ax,ay=cfg['aviso_mm']; texto(c,ax,ay,cfg['aviso'],9,True)
     texto(c,ax,ay-5,'Textos legales en BORRADOR, pendientes de validación profesional. Porcentajes sobre area_m2 del ETL (ESRI:102033).',7)
     c.showPage(); c.save()
     meta={'cut':cut,'escala':escala,'barra_m':distancia,'barra_mm':largo,'barra_origen_mm':[sx,sy], 'sha256_datos':sha,'porcentajes':(areas/areas.sum()*100).to_dict()}
-    salida.with_suffix('.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2)+'\n')
+    salida.with_suffix('.json').write_text(json.dumps(meta,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     return salida
 
 

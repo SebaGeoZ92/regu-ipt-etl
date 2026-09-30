@@ -23,15 +23,17 @@ python tests/test_sintetico.py
 - Colores importados de `etl/mapa.py`, títulos literales de `legal_refs.json`. Tramas redundantes por clase permiten lectura sin depender del color. Riesgo: diagonales más densas, según `riesgo` del producto; no se confunden todas las afectaciones con riesgo.
 - Estadísticas sobre `area_m2` del ETL (proyección equivalente ESRI:102033), incluyendo su tratamiento costero. El dibujo no recalcula la clasificación legal. Se reparan geometrías inválidas en memoria y se simplifican 2 m para representación; el GPKG no se modifica.
 - Minimapa: cobertura de todas las clases del PMTiles regional a zoom 6, generalizada 100 m. Se identifica expresamente como cobertura generalizada, no como una nueva delimitación administrativa. Comuna destacada a partir de BCN.
-- Decreto, fecha y última modificación se reproducen tal como aparecen en la muestra del cruce Portal IPT. La tabla no certifica vigencia actual; los metadatos ausentes se indican. R2 no se presenta como instrumento.
+- Decreto, fecha y última modificación se reproducen tal como aparecen en la muestra del cruce Portal IPT. La tabla no certifica vigencia actual; los metadatos ausentes se indican, incluso cuando la entrada no contiene las columnas opcionales de vigencia o fecha de extracción. R2 no se presenta como instrumento.
 - Solo se rotulan comunas vecinas cuando el texto cabe en el marco sin colisión. No se inventan nombres de localidades ni normas de zona.
 
 ## Plantilla y comprobación
 
 `layouts/lamina_comuna.json` configura título, proyecto, fecha, fuentes, aviso, tamaños, tramas y posiciones en mm del mapa, panel, minimapa, escala, norte y rótulo. Se valida con `layouts/_esquema.json`; texto menor de 7 pt y aviso alterado se rechazan. Este primer formato es A3 horizontal; no se anuncian otros tamaños aún. Un panel de instrumentos que exceda el espacio produce error, no texto truncado.
 
-Pruebas: tamaño físico A3, ausencia de imágenes rasterizadas, peso menor de 10 MB, tamaño tipográfico mínimo, aviso extraído del PDF, cinco segmentos de escala medidos en el PDF, plantilla inválida y snapshot con tolerancia. La referencia `tests/lamina_comuna.png` fue revisada visualmente; no se actualiza automáticamente en los tests. Revisión adicional de la suite sintética del ETL sin modificarla.
+Lectura de plantillas y textos legales, y escritura de auditoría, con UTF-8 explícito para conservar tildes también en Windows.
 
-Lote inicial de las siete comunas: 14,94 s en este entorno. El requisito de 32 comunas en menos de cinco minutos queda pendiente de validación con una entrada completa de 32 comunas; no se extrapola como resultado medido.
+Pruebas: entrada sin metadatos opcionales, tamaño físico A3, ausencia de imágenes rasterizadas, peso menor de 10 MB, tamaño tipográfico mínimo, aviso extraído del PDF, cinco segmentos de escala medidos en el PDF, plantilla inválida y snapshot con tolerancia. La referencia `tests/lamina_comuna.png` fue revisada visualmente; no se actualiza automáticamente en los tests. Revisión adicional de la suite sintética del ETL sin modificarla.
+
+Lote de las siete comunas: 19,69 s en la última verificación del entorno cloud (2026-09-30). El requisito de 32 comunas en menos de cinco minutos queda pendiente de validación con una entrada completa de 32 comunas; no se extrapola como resultado medido.
 
 Las dependencias están aisladas en `sig/requirements.txt`. Las salidas de ejemplo se guardan en `sig/salidas/`; los lotes de trabajo deben ir fuera del repositorio o a `data/`, que ya está ignorado.
