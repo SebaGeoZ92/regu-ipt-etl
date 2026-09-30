@@ -1,0 +1,34 @@
+# Contrato de datos · docs/FUENTES_BAJO_DEMANDA.md
+id: sag_subdivisiones
+nombre: Certificados de subdivisión de predios rústicos (DL 3.516)
+institucion: SAG
+estado: propuesta
+responsable_contacto: null
+obtenido_via: null                  # candidata natural a solicitud por Ley de Transparencia (estructura, no datos)
+solicitud_transparencia: null
+acceso:
+  tipo: null
+  url: null
+  url_referencia: null              # por verificar (Paso 0): ¿existe capa georreferenciada o solo registro por ROL?
+  frecuencia_refresco: null
+licencia: null
+escala: null
+fecha_datos: null
+diccionario: []
+mapeo: []
+excluir_siempre: [RUT, NOMBRE, NOMBRE_PROPIETARIO, PROPIETARIO, SOLICITANTE, DIRECCION, TELEFONO, EMAIL]
+condicionante:
+  nivel: informativo
+  efecto: >-
+    BORRADOR: El predio registra una subdivisión certificada por el SAG (DL 3.516, superficie mínima 0,5 ha).
+    Sirve como antecedente del historial de subdivisión rural; no reemplaza el certificado del SAG.
+demanda:
+  preguntas_que_responde: ["¿Este predio ya fue subdividido?", "¿Puedo subdividir mi terreno rural?"]
+  umbral_activacion: 25
+  relevante_si:                     # BORRADOR: el DL 3.516 rige fuera de los límites urbanos
+    clases: [R1, R2]
+    regiones_cut: null
+notas: >
+  Probablemente se cruza por ROL (predio SII), no por polígono: depende de la fase GEOSAL. Tomar solo número y
+  fecha de certificado y superficie resultante; nunca datos del propietario o solicitante.
+notas_eticas: Datos ligados a propietarios; publicar solo el hecho (existe certificado, fecha), nunca personas.
