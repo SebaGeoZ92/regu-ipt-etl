@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "regu-ipt-etl/fuentes/contrato",
+  "title": "Contrato de datos de una fuente externa (docs/FUENTES_BAJO_DEMANDA.md)",
+  "type": "object",
+  "required": ["id", "nombre", "institucion", "estado", "acceso", "licencia", "diccionario", "mapeo",
+               "excluir_siempre", "condicionante", "demanda"],
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]+$"},
+    "nombre": {"type": "string"},
+    "institucion": {"type": "string"},
+    "estado": {"enum": ["propuesta", "contrato", "mapeada", "latente", "activa", "mantenida"]},
+    "responsable_contacto": {"type": ["string", "null"]},
+    "obtenido_via": {"enum": ["funcionario", "usuario", "transparencia", "publicación", null]},
+    "solicitud_transparencia": {"type": ["string", "null"]},
+    "acceso": {
+      "type": "object",
+      "required": ["tipo", "url", "frecuencia_refresco"],
+      "properties": {
+        "tipo": {"enum": ["arcgis", "wfs", "archivo", "api", "manual", null]},
+        "url": {"type": ["string", "null"]},
+        "url_referencia": {"type": ["string", "null"]},
+        "capa": {"type": ["string", "null"]},
+        "frecuencia_refresco": {"type": ["string", "null"]}
+      }
+    },
+    "licencia": {"type": ["string", "null"]},
+    "escala": {"type": ["string", "null"]},
+    "fecha_datos": {"type": ["string", "null"]},
+    "diccionario": {
+      "type": "array",
+      "items": {"type": "object", "required": ["campo"],
+                "properties": {"campo": {"type": "string"}, "tipo": {"type": ["string", "null"]},
+                               "descripcion": {"type": ["string", "null"]}, "dominio": {}}}
+    },
+    "mapeo": {
+      "type": "array",
+      "items": {"type": "object", "required": ["origen", "destino"],
+                "properties": {"origen": {"type": "string"},
+                               "destino": {"enum": ["condicionante_nombre", "condicionante_detalle", "condicionante_estado",
+                                                    "fecha_fuente", "escala", "id_fuente"]},
+                               "transformacion": {"type": ["string", "null"]}}}
+    },
+    "excluir_siempre": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "condicionante": {
+      "type": "object",
+      "required": ["nivel", "efecto"],
+      "properties": {
+        "nivel": {"enum": ["restriccion", "alerta", "informativo"]},
+        "nivel_por_clase": {"type": "object"},
+        "efecto": {"type": "string", "pattern": "^BORRADOR"}
+      }
+    },
+    "demanda": {
+      "type": "object",
+      "required": ["preguntas_que_responde", "umbral_activacion", "relevante_si"],
+      "properties": {
+        "preguntas_que_responde": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+        "umbral_activacion": {"type": "integer", "minimum": 1},
+        "relevante_si": {
+          "type": "object",
+          "required": ["clases"],
+          "properties": {
+            "clases": {"type": "array", "items": {"enum": ["U1", "U2", "U3", "E", "R1", "R2"]}, "minItems": 1},
+            "regiones_cut": {"type": ["array", "null"], "items": {"type": "string", "pattern": "^[0-9]{2}$"}}
+          }
+        }
+      }
+    },
+    "notas": {"type": ["string", "null"]},
+    "notas_eticas": {"type": ["string", "null"]}
+  }
+}

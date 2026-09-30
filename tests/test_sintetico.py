@@ -370,6 +370,36 @@ def test_vigencia():
     assert "Límite Urbano Padre Las Casas" not in m.index                                     # sin candidato: no inventa
 
 
+def _contrato_ejemplo(**cambios):
+    c = {"id": "conadi_tierras_indigenas", "nombre": "Tierras indígenas", "institucion": "CONADI",
+         "estado": "propuesta", "responsable_contacto": None, "obtenido_via": None,
+         "acceso": {"tipo": None, "url": None, "frecuencia_refresco": None}, "licencia": None,
+         "escala": None, "fecha_datos": None, "diccionario": [], "mapeo": [],
+         "excluir_siempre": ["RUT", "NOMBRE", "NOMBRE_TITULAR", "DIRECCION", "TELEFONO"],
+         "condicionante": {"nivel": "restriccion", "efecto": "BORRADOR: Ley 19.253."},
+         "demanda": {"preguntas_que_responde": ["¿Mi terreno es tierra indígena?"], "umbral_activacion": 25,
+                     "relevante_si": {"clases": ["R1", "R2"], "regiones_cut": ["08", "09", "14", "10"]}}}
+    for k, v in cambios.items():
+        c[k] = v
+    return c
+
+
+def test_fuentes_contratos():
+    """Contratos de fuentes bajo demanda: esquema + reglas por estado; los datos personales nunca se mapean."""
+    from etl.fuentes import validar
+    assert validar(_contrato_ejemplo()) == []
+    e = validar(_contrato_ejemplo(estado="mapeada", licencia="CC BY 4.0",
+                                  diccionario=[{"campo": "RUT"}, {"campo": "COMUNIDAD"}],
+                                  mapeo=[{"origen": "rut", "destino": "condicionante_detalle"}]))
+    assert any("dato personal" in x for x in e), e
+    assert any("latente exige acceso" in x for x in validar(_contrato_ejemplo(
+        estado="latente", licencia="x", diccionario=[{"campo": "A"}],
+        mapeo=[{"origen": "A", "destino": "condicionante_detalle"}])))
+    assert validar(_contrato_ejemplo(condicionante={"nivel": "restriccion", "efecto": "Ley 19.253"}))   # sin BORRADOR
+    assert validar(_contrato_ejemplo(estado="aprobada"))                                              # estado inválido
+    assert any("excluir_siempre" in x for x in validar(_contrato_ejemplo(excluir_siempre=["TELEFONO"])))
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -439,6 +469,7 @@ def test_paginacion_arcgis():
 if __name__ == "__main__":
     test_end_to_end()
     test_vigencia()
+    test_fuentes_contratos()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
