@@ -1,0 +1,18 @@
+{
+  "titulo": "Situación normativa del suelo",
+  "proyecto": "Atlas Normativo · Regu",
+  "fuentes": "IDE MINVU · Portal IPT MINVU · BCN",
+  "aviso": "Información referencial. No reemplaza el CIP que emite la DOM (OGUC art. 1.4.4).",
+  "fecha": "2026-09-30",
+  "formato": "A3-h",
+  "mapa_mm": [12, 47, 270, 209],
+  "panel_mm": [290, 47, 118, 209],
+  "minimapa_mm": [294, 56, 68, 50],
+  "escala_mm": [22, 58],
+  "norte_mm": [269, 237],
+  "titulo_mm": [12, 277],
+  "rotulo_mm": [12, 35],
+  "aviso_mm": [12, 13],
+  "tamano_texto_pt": 8,
+  "patrones": {"U1": "horizontal", "U2": "vertical", "U3": "cruz", "E": "puntos", "R1": "diagonal", "R2": "liso"}
+}
