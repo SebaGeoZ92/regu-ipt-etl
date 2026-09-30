@@ -1,0 +1,32 @@
+# Contrato de datos · docs/FUENTES_BAJO_DEMANDA.md (migrado de docs/CONDICIONANTES.md, fuente 3)
+id: conaf_bosque_nativo
+nombre: Bosque nativo (Catastro de uso de suelo y vegetación)
+institucion: CONAF / IDE MINAGRI
+estado: propuesta
+responsable_contacto: null
+obtenido_via: null
+solicitud_transparencia: null
+acceso:
+  tipo: null
+  url: null
+  url_referencia: https://ide.minagri.gob.cl   # servicio "Uso de la Tierra CONAF"; por verificar (Paso 0)
+  frecuencia_refresco: null         # escala regional, con fecha distinta por región
+licencia: null
+escala: null
+fecha_datos: null
+diccionario: []                     # esperado: uso, subuso, estructura, especies
+mapeo: []                           # se filtrará solo bosque nativo (expresión sobre uso/subuso, estado 'contrato')
+excluir_siempre: [RUT, NOMBRE, NOMBRE_PROPIETARIO, DIRECCION, TELEFONO, EMAIL]
+condicionante:
+  nivel: alerta
+  efecto: >-
+    BORRADOR: Posible bosque nativo (catastro CONAF, escala regional). Su corta o intervención puede requerir
+    un plan de manejo aprobado por CONAF (Ley 20.283); verificar en terreno.
+demanda:
+  preguntas_que_responde: ["¿Hay bosque nativo en mi terreno?", "¿Necesito plan de manejo para construir?"]
+  umbral_activacion: 25
+  relevante_si:                     # BORRADOR
+    clases: [R1, R2, E]
+    regiones_cut: null
+notas: Filtrar las categorías de bosque nativo; registrar la fecha del catastro por región.
+notas_eticas: null
