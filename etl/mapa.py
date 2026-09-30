@@ -15,6 +15,7 @@ from datetime import date
 from pathlib import Path
 
 import geopandas as gpd
+import pandas as pd
 import pyogrio
 import requests
 
@@ -31,8 +32,21 @@ COLORES = {"U1": "#b0442b", "U2": "#e08a3c", "U3": "#8c5aa0", "E": "#d8bf3f", "R
 EJEMPLO = {"lon": -72.5904, "lat": -38.7359, "texto": "centro de Temuco"}   # ficha inicial (Araucanía)
 
 
+CAMPOS_VIG = {"denominacion": "ipt_denominacion", "norma": "ipt_norma", "fecha_vigencia": "ipt_fecha",
+              "ultima_modificacion": "ipt_ultmod", "ordenanza_url": "ord_url"}
+
+
+def unir_vigencia(capa: gpd.GeoDataFrame, match_csv: Path | None) -> gpd.GeoDataFrame:
+    """Agrega norma, fecha y ordenanza del Portal IPT (vigencia_match.csv de `run.py vigencia`) a cada pieza."""
+    if not match_csv or not Path(match_csv).exists():
+        return capa
+    m = pd.read_csv(match_csv, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+    m = m[["ipt_tipo", "ipt_nombre", "cut", *CAMPOS_VIG]].rename(columns=CAMPOS_VIG)
+    return capa.merge(m, on=["ipt_tipo", "ipt_nombre", "cut"], how="left")
+
+
 def generar_pmtiles(capa: gpd.GeoDataFrame, destino: Path, minzoom: int = 6, maxzoom: int = 14) -> Path:
-    g = capa[CAMPOS + ["geometry"]].copy()
+    g = capa[CAMPOS + [c for c in CAMPOS_VIG.values() if c in capa] + ["geometry"]].copy()
     g["riesgo"] = g["riesgo"].fillna(False).astype(int)
     g["zona"] = g["zona"].astype(object).where(g["zona"].notna(), None).map(lambda z: z[:90] if isinstance(z, str) else z)
     destino.unlink(missing_ok=True)
@@ -94,7 +108,7 @@ def generar_html(pmtiles: Path, comunas_gj: dict, legal: dict, region: str, fech
 def generar_mapa(gpkg: Path, comunas: gpd.GeoDataFrame, f_cut: str, f_nom: str, legal: dict, region: str,
                  out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
-    capa = gpd.read_file(gpkg, layer="capa_ipt")
+    capa = unir_vigencia(gpd.read_file(gpkg, layer="capa_ipt"), Path(gpkg).parent / "vigencia_match.csv")
     pm = generar_pmtiles(capa, out_dir / "capa_ipt.pmtiles")
     gj = comunas_geojson(comunas, f_cut, f_nom)
     fecha = date.today().isoformat()
@@ -161,6 +175,8 @@ select { width: 100%; font: inherit; padding: 7px 8px; border-radius: 6px; borde
   background: var(--bg); color: var(--fg); }
 select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pie { font-size: 11px; color: var(--muted); margin-top: auto; }
+.panel a { color: var(--accent); text-underline-offset: 2px; }
+.panel a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .estado { position: absolute; left: 12px; top: 12px; background: var(--surface); color: var(--fg);
   border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12px; z-index: 2; }
 .maplibregl-ctrl-group { background: var(--surface); }
@@ -216,11 +232,12 @@ select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   $("leyenda").innerHTML = Object.entries(D.clases).map(([k, c]) =>
     `<li><span class="chip" style="background:${c.color}">${k}</span><span>${esc(c.titulo)}</span></li>`).join("") +
     `<li><span class="chip riesgo" aria-hidden="true"></span><span>Área de riesgo (superpuesta a la clase)</span></li>`;
-  $("pie").textContent = `Fuentes: IDE MINVU (geoide.minvu.cl), División comunal BCN. Generado el ${D.fecha} con regu-ipt-etl.`;
+  $("pie").textContent = `Fuentes: IDE MINVU (geoide.minvu.cl), Portal IPT MINVU (vigencia y ordenanzas), División comunal BCN. Generado el ${D.fecha} con regu-ipt-etl.`;
   const sel = $("comuna");
   COMUNAS.features.slice().sort((a, b) => a.properties.nombre.localeCompare(b.properties.nombre, "es"))
     .forEach((f) => { const o = document.createElement("option"); o.value = f.properties.cut; o.textContent = f.properties.nombre; sel.appendChild(o); });
 
+  const fecha = (iso) => { if (!iso) return ""; const [a, m, d] = String(iso).slice(0, 10).split("-"); return d ? `${d}-${m}-${a}` : iso; };
   function pintarFicha(p, lngLat, esEjemplo) {
     const c = D.clases[p.clase] || { titulo: p.norma_titulo || p.clase, resumen: "", normas: [], color: "#999" };
     const instrumento = p.ipt_tipo ? `${esc(p.ipt_tipo)} ${esc(p.ipt_nombre || "")}` : "Ninguno (sin instrumento de planificación)";
@@ -231,6 +248,10 @@ select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
       ${Number(p.riesgo) ? '<span class="riesgo">Dentro de un área de riesgo</span>' : ""}
       <dl>
         <dt>Instrumento</dt><dd>${instrumento}</dd>
+        ${p.ipt_norma || p.ipt_fecha ? `<dt>Vigente desde</dt><dd>${esc([p.ipt_norma, fecha(p.ipt_fecha)].filter(Boolean).join(" · "))}
+          ${p.ipt_denominacion ? `<br><span class="nota">${esc(p.ipt_denominacion)}</span>` : ""}</dd>` : ""}
+        ${p.ipt_ultmod ? `<dt>Última modificación</dt><dd>${esc(fecha(p.ipt_ultmod))}</dd>` : ""}
+        ${p.ord_url ? `<dt>Ordenanza</dt><dd><a href="${esc(p.ord_url)}" target="_blank" rel="noopener">Abrir PDF en MINVU</a></dd>` : ""}
         <dt>Zona</dt><dd class="mono">${esc(p.zona || "—")}</dd>
         <dt>Comuna</dt><dd>${esc(p.comuna || "—")} <span class="mono">${esc(p.cut || "")}</span></dd>
         <dt>Coordenadas</dt><dd class="mono">${lngLat.lat.toFixed(5)}, ${lngLat.lng.toFixed(5)}</dd>

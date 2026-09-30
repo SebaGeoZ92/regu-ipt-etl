@@ -3,7 +3,8 @@
 Contrato (docs/CONDICIONANTES.md), MVP sin condicionantes:
     {
       "comuna": "...", "cut": "...", "region": "...",
-      "particion": [{"clase", "pct", "ipt_tipo", "ipt", "zona", "norma_titulo", "riesgo_pct"}],
+      "particion": [{"clase", "pct", "ipt_tipo", "ipt", "zona", "norma_titulo", "riesgo_pct",
+                     "vigencia": {instrumento, norma, fecha_vigencia, ultima_modificacion, ordenanza_url, ...} | None}],
       "riesgo_pct": float,
       "afectaciones": [{"tipo", "capa", "zona", "detalle", "riesgo", "pct"}],
       "condicionantes": [],            # fase siguiente
@@ -80,14 +81,17 @@ def ficha(geom_4326: BaseGeometry, gpkg: str | Path) -> dict:
     principal = capa.loc[capa["a"].idxmax()]
     out.update(comuna=_txt(principal.get("comuna")), cut=_txt(principal.get("cut")), region=_txt(principal.get("region")))
     capa["riesgo"] = capa["riesgo"].fillna(False).astype(bool)
-    claves = ["clase", "ipt_tipo", "ipt_nombre", "zona", "norma_titulo"]
+    claves = ["clase", "ipt_tipo", "ipt_nombre", "zona", "norma_titulo", "cut"]
     part = (capa.assign(**{k: capa[k].astype(object).where(capa[k].notna(), None) for k in claves},
                         a_riesgo=capa["a"].where(capa["riesgo"], 0.0))
                 .groupby(claves, dropna=False)[["a", "a_riesgo"]].sum().reset_index()
                 .sort_values("a", ascending=False))
+    vig = vigencias(gpkg)
     out["particion"] = [{"clase": r.clase, "pct": round(100 * r.a / total, 2), "ipt_tipo": _txt(r.ipt_tipo),
                          "ipt": _txt(r.ipt_nombre), "zona": _txt(r.zona), "norma_titulo": _txt(r.norma_titulo),
-                         "riesgo_pct": round(100 * r.a_riesgo / total, 2)} for r in part.itertuples()]
+                         "riesgo_pct": round(100 * r.a_riesgo / total, 2),
+                         "vigencia": vig.get((_txt(r.ipt_tipo), _txt(r.ipt_nombre), _txt(r.cut)))}
+                        for r in part.itertuples()]
     out["riesgo_pct"] = round(100 * float(capa.loc[capa["riesgo"], "a"].sum()) / total, 2)
     if cubierto < total * 0.9999 and not es_punto:   # parte del polígono cae fuera de la partición
         out.update(cobertura="parcial", fuera_de_cobertura=True,
@@ -105,6 +109,28 @@ def ficha(geom_4326: BaseGeometry, gpkg: str | Path) -> dict:
                 "detalle": det[:200] if isinstance(det, str) else det, "riesgo": bool(getattr(r, "riesgo", False)),
                 "pct": 100.0 if es_punto else round(100 * r.a / total, 2)})
     return out
+
+
+_VIG_CACHE: dict = {}
+
+
+def vigencias(gpkg: Path) -> dict:
+    """{(ipt_tipo, ipt_nombre, cut): {instrumento, norma, fecha_vigencia, ultima_modificacion, ordenanza_url,
+    confianza, portal_id}} desde vigencia_match.csv junto al GPKG (lo genera `run.py vigencia`). Vacío si no existe."""
+    p = Path(gpkg).parent / "vigencia_match.csv"
+    clave = (p, p.stat().st_mtime if p.exists() else None)
+    if clave not in _VIG_CACHE:
+        d = {}
+        if p.exists():
+            m = pd.read_csv(p, encoding="utf-8-sig", dtype=str, keep_default_na=False)
+            for r in m.itertuples():
+                d[(r.ipt_tipo, r.ipt_nombre, r.cut)] = {
+                    "instrumento": r.denominacion, "norma": r.norma or None, "fecha_vigencia": r.fecha_vigencia or None,
+                    "ultima_modificacion": r.ultima_modificacion or None, "ordenanza_url": r.ordenanza_url or None,
+                    "confianza": r.confianza, "portal_id": int(r.portal_id), "fuente": "Portal IPT MINVU"}
+        _VIG_CACHE.clear()
+        _VIG_CACHE[clave] = d
+    return _VIG_CACHE[clave]
 
 
 def ultimo_gpkg(out_dir: str | Path) -> Path | None:

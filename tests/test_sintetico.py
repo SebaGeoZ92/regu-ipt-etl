@@ -263,10 +263,23 @@ def test_end_to_end():
         assert [(p["clase"], p["zona"]) for p in f["particion"]] == [("U1", "ZU-4")]
         assert q["09101"]["ha_extension_costera"] > 0 and q["09102"]["ha_extension_costera"] == 0
 
+        # vigencia (Portal IPT) en ficha y mapa, vía vigencia_match.csv junto al GPKG
+        assert f["particion"][0]["vigencia"] is None                   # sin match: no se inventa
+        pd.DataFrame([{"ipt_tipo": "PRC", "ipt_nombre": "Temuco", "cut": "09101", "portal_id": 1055, "portal_tipo": "PRC",
+                       "denominacion": "Plan Regulador Comunal de Temuco-Labranza", "norma": "Resolución N° 149",
+                       "fecha_vigencia": "2010-02-02", "ultima_modificacion": "2012-07-07", "n_modificaciones": 2,
+                       "ordenanza_url": "https://instrumentosdeplanificacion.minvu.cl/x.pdf", "score": 0.5,
+                       "confianza": "alta"}]).to_csv(Path(prod["gpkg"]).parent / "vigencia_match.csv", index=False,
+                                                     encoding="utf-8-sig")
+        v = ficha(Point(-72.52, -38.69), prod["gpkg"])["particion"][0]["vigencia"]
+        assert v["norma"] == "Resolución N° 149" and v["fecha_vigencia"] == "2010-02-02" and v["ordenanza_url"]
+
         # mapa: PMTiles con los campos de la ficha (el HTML necesita red para MapLibre y no se prueba aquí)
-        from etl.mapa import CAMPOS, generar_pmtiles
-        pm = generar_pmtiles(gpd.read_file(prod["gpkg"], layer="capa_ipt"), tmp / "out" / "capa.pmtiles", 6, 10)
+        from etl.mapa import CAMPOS, generar_pmtiles, unir_vigencia
+        capa_v = unir_vigencia(gpd.read_file(prod["gpkg"], layer="capa_ipt"), Path(prod["gpkg"]).parent / "vigencia_match.csv")
+        pm = generar_pmtiles(capa_v, tmp / "out" / "capa.pmtiles", 6, 10)
         leido = gpd.read_file(pm, layer="ipt")
+        assert set(leido.loc[leido.ipt_nombre == "Temuco", "ipt_norma"]) == {"Resolución N° 149"}
         assert pm.stat().st_size > 0 and len(leido) > 0 and set(CAMPOS) - {"cut"} <= set(leido.columns)
         assert "Límite Urbano Padre Las Casas" in set(leido.ipt_nombre)   # textos en UTF-8 (no cp1252)
         assert gpd.read_file(prod["gpkg"], layer="capa_ipt").is_valid.all()
