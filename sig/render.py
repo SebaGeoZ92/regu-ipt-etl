@@ -65,12 +65,15 @@ def encuadre(bounds, rect, margen=1.10):
     return lambda u,v: (x+w/2+(u-cx)*factor, y+h/2+(v-cy)*factor), factor
 
 
-SERIE_ESCALAS = (1, 1.5, 2, 2.5, 5, 7.5)
+# Serie de escalas estándar. Incluye 3 y 4 (1:300.000, 1:400.000): sin ellas, comunas de 250-400k saltaban a
+# 1:500.000 y ocupaban 27-39 % del marco (Nueva Imperial, Vilcún, Lautaro).
+SERIE_ESCALAS = (1, 1.5, 2, 2.5, 3, 4, 5, 7.5)
 DISTANCIAS_BARRA_M = (50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000)
 
 
 def escala_estandar(denominador):
-    """Menor escala de la serie 1/1,5/2/2,5/5/7,5 × 10^n que es >= al denominador del encuadre (así el mapa cabe)."""
+    """Menor escala de la serie 1/1,5/2/2,5/3/4/5/7,5 × 10^n que es >= al denominador del encuadre (así el mapa
+    cabe)."""
     base = 10 ** math.floor(math.log10(denominador))
     for f in SERIE_ESCALAS + (10,):
         if f * base >= denominador - 1e-6:

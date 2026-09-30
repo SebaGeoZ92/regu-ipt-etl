@@ -150,7 +150,7 @@ Si se migra, basta con cambiar `paths.comunas` y los tres `field_*` en config. A
    - Estado: 9 tests de `sig/` en verde, y `python tests\test_sintetico.py` en verde.
    - Uso: `python -m sig.render --cut 09101 --salida sig/salidas/temuco.pdf` y `python -m pytest sig/tests -q`.
    - Pendiente de la lámina:
-     - Medir el lote (7 comunas en la muestra; el objetivo son 32 en menos de 5 minutos).
+     - Lote medido (30-sep-2026): las 7 comunas de la muestra tardan 14,8 s, unos 2 s por lámina. Se estima alrededor de 1 minuto para 32, pero falta medirlo con un GPKG de la región completa.
      - Otros formatos: solo existe A3 horizontal; faltan A4 y A3 vertical.
      - Rótulos de comunas vecinas: en Temuco no aparece ninguno.
      - PR de la rama a `master`.

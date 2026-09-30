@@ -93,8 +93,20 @@ def test_escala_estandar_y_barra():
     from sig.render import barra_escala, escala_estandar, etiqueta_distancia
     assert escala_estandar(142539.4) == 150000
     assert escala_estandar(18000) == 20000 and escala_estandar(20000) == 20000 and escala_estandar(76000) == 100000
+    assert escala_estandar(258785) == 300000 and escala_estandar(313212) == 400000
     assert barra_escala(150000) == 5000 and barra_escala(20000) == 1000 and barra_escala(5000) == 250
     assert etiqueta_distancia(5000) == '5 km' and etiqueta_distancia(2500) == '2,5 km' and etiqueta_distancia(250) == '250 m'
+
+
+def test_comunas_de_la_muestra_llenan_el_marco():
+    """Con la escala estándar, cada comuna de la muestra ocupa al menos el 55 % del área que ocuparía a la escala
+    exacta del encuadre (regresión: sin 1:300.000 y 1:400.000 algunas quedaban en 27-39 %)."""
+    from reportlab.lib.units import mm
+    from sig.render import CRS, encuadre, escala_estandar
+    cfg=plantilla('lamina_comuna')
+    for g in gpd.read_file(ROOT/'samples/temuco/muestra.gpkg',layer='comunas').to_crs(CRS).geometry:
+        _,f=encuadre(g.bounds,cfg['mapa_mm'],1.16); d=1000*mm/f
+        assert (d/escala_estandar(d))**2 >= .55, d
 
 
 def test_snapshot(pdf):
