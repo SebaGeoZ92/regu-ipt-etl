@@ -1,0 +1,35 @@
+# Contrato de datos · docs/FUENTES_BAJO_DEMANDA.md
+id: conadi_tierras_indigenas
+nombre: Tierras indígenas (títulos de merced, compras del Fondo de Tierras, ADI)
+institucion: CONADI
+estado: propuesta
+responsable_contacto: null          # institución/rol de quien nos pase la estructura (sin datos personales si no autoriza)
+obtenido_via: null                  # funcionario | usuario | transparencia | publicación
+solicitud_transparencia: null
+acceso:
+  tipo: null                        # arcgis | wfs | archivo | api | manual
+  url: null
+  url_referencia: null              # por verificar (Paso 0): servicio o descarga oficial de CONADI
+  frecuencia_refresco: null
+licencia: null                      # sin licencia clara → solo consulta, no redistribución
+escala: null
+fecha_datos: null
+diccionario: []                     # tal como lo entregue la fuente (campo, tipo, descripcion, dominio)
+mapeo: []                           # SOLO lo que el producto necesita; se escribe en estado 'contrato'
+excluir_siempre: [RUT, NOMBRE, NOMBRE_TITULAR, TITULAR, DIRECCION, TELEFONO, EMAIL]
+condicionante:
+  nivel: restriccion
+  efecto: >-
+    BORRADOR: Posible tierra indígena (Ley 19.253). Pueden aplicar restricciones de enajenación, gravamen,
+    arrendamiento y subdivisión; verificar en CONADI antes de comprar, subdividir o construir.
+demanda:
+  preguntas_que_responde: ["¿Mi terreno es tierra indígena?", "¿Puedo comprar o subdividir este predio?"]
+  umbral_activacion: 25             # consultas por región antes de activar
+  relevante_si:                     # BORRADOR (regla del documento de especificación)
+    clases: [R1, R2]
+    regiones_cut: ["08", "09", "14", "10"]   # Biobío, La Araucanía, Los Ríos, Los Lagos
+notas: null
+notas_eticas: >
+  Información sensible para comunidades mapuche. Se publica solo el hecho territorial (el polígono es tierra
+  indígena y qué ley aplica), nunca los titulares. Antes de publicar, revisarlo con el arquitecto y,
+  idealmente, con alguien vinculado a CONADI o a comunidades.
