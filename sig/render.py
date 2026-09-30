@@ -103,6 +103,26 @@ def parrafo(c, x, y, contenido, ancho, size=8):
     return y
 
 
+def region_corta(region):
+    """'Región de La Araucanía' -> 'La Araucanía'; 'Región del Maule' -> 'Maule'."""
+    for pref in ('Región de ', 'Región del ', 'Region de ', 'Region del '):
+        if region.startswith(pref):
+            return region[len(pref):]
+    return region
+
+
+def rotulo_minimapa(c, nombre, limite, tr, rect):
+    """Nombre de la comuna junto a su silueta en el minimapa (a la derecha o, si no cabe, a la izquierda),
+    siempre dentro del marco del minimapa."""
+    x, y, w, h = [v*mm for v in rect]
+    a, b, d, e = limite.bounds
+    (x0, y0), (x1, y1) = tr(a, b), tr(d, e)
+    ancho = stringWidth(nombre, 'Helvetica-Bold', 8)
+    ty = min(max((y0 + y1) / 2 - 1*mm, y + 1*mm), y + h - 3*mm)
+    tx = x1 + 1.5*mm if x1 + 1.5*mm + ancho <= x + w else max(x0 - 1.5*mm - ancho, x)
+    texto(c, tx/mm, ty/mm, nombre, 8, True)
+
+
 @lru_cache(maxsize=4)
 def regional(ruta):
     g = gpd.read_file(ruta, ZOOM_LEVEL='6').to_crs(CRS)
@@ -114,6 +134,7 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     seleccion = comunas[comunas.cut.astype(str).str.zfill(5)==cut]
     if len(seleccion)!=1: raise ValueError(f'CUT {cut}: se esperaba una comuna, hay {len(seleccion)}')
     nombre = seleccion.iloc[0].comuna
+    region = str(seleccion.iloc[0].get('region') or '').strip()
     limite = make_valid(seleccion.geometry.iloc[0])
     capa = gpd.read_file(gpkg,layer='capa_ipt')
     capa = capa[capa.cut.astype(str).str.zfill(5)==cut].copy()
@@ -134,7 +155,7 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     c.setFillColor(HexColor('#fafbf8')); c.rect(0,0,420*mm,297*mm,fill=1,stroke=0)
     tx,ty=cfg['titulo_mm']
     texto(c,tx,ty,cfg['titulo'],23,True)
-    texto(c,tx,ty-9,f'Comuna de {nombre} · Región de La Araucanía · CUT {cut}',12)
+    texto(c,tx,ty-9,' · '.join(x for x in (f'Comuna de {nombre}', region, f'CUT {cut}') if x),12)
     texto(c,350,ty,'LÁMINA COMUNAL / 01',9,True)
     rect=cfg['mapa_mm']; x,y,w,h=rect
     transform,factor=encuadre(limite.bounds,rect,1.16)
@@ -206,12 +227,12 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
         yy-=3
     if yy < 119: raise ValueError('Instrumentos exceden el panel: ajustar plantilla; no se recorta texto')
     mx,my,mw,mh=cfg['minimapa_mm']
-    texto(c,px,my+mh+6,'UBICACIÓN · LA ARAUCANÍA',9,True)
+    texto(c,px,my+mh+6,'UBICACIÓN · '+region_corta(region).upper() if region else 'UBICACIÓN',9,True)
     reg=regional(str(pmtiles)); tr,_=encuadre(reg.bounds,[mx,my,mw,mh])
     c.setFillColor(HexColor('#dce1d7')); c.drawPath(trazado(c,reg,tr),fill=1,stroke=0,fillMode=0)
     c.setFillColor(HexColor('#b0442b')); c.setStrokeColor(HexColor('#263e36')); c.setLineWidth(.6)
     c.drawPath(trazado(c,limite,tr),fill=1,stroke=1,fillMode=0)
-    texto(c,px+75,my+25,nombre,8,True)
+    rotulo_minimapa(c,nombre,limite,tr,[mx,my,mw,mh])
     texto(c,px,my-3,'Cobertura regional generalizada del PMTiles.',7)
     rx,ry=cfg['rotulo_mm']; sha=hashlib.sha256(Path(gpkg).read_bytes()).hexdigest()[:12]
     texto(c,rx,ry,cfg['proyecto'],10,True)

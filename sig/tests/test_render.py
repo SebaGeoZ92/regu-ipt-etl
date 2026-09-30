@@ -36,6 +36,20 @@ def test_pdf_vectorial_y_aviso(pdf):
     assert pdf.stat().st_size<10_000_000
 
 
+def test_region_y_rotulo_minimapa_desde_datos(pdf):
+    """La región sale de la capa 'comunas' (no está escrita en el código) y el nombre de la comuna del minimapa
+    queda dentro del marco del minimapa, junto a su silueta."""
+    cfg=plantilla('lamina_comuna'); pt=72/25.4
+    with pymupdf.open(pdf) as doc:
+        p=doc[0]; texto_pdf=p.get_text()
+        assert 'Comuna de Temuco · Región de La Araucanía · CUT 09101' in texto_pdf
+        assert 'UBICACIÓN · LA ARAUCANÍA' in texto_pdf
+        mx,my,mw,mh=cfg['minimapa_mm']
+        marco=pymupdf.Rect(mx*pt,p.rect.height-(my+mh)*pt,(mx+mw)*pt,p.rect.height-my*pt)
+        rotulos=[r for r in p.search_for('Temuco') if r.intersects(marco)]
+        assert rotulos and all(marco.contains(r) for r in rotulos)
+
+
 def test_escala_medida_en_pdf(pdf):
     meta=json.loads(pdf.with_suffix('.json').read_text(encoding='utf-8'))
     with pymupdf.open(pdf) as doc:
