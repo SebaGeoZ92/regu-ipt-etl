@@ -152,6 +152,7 @@ Si se migra, basta con cambiar `paths.comunas` y los tres `field_*` en config. A
 
 - Código y comentarios en español.
 - **Avance de procesos largos**: `build`, `download`, `discover` y cualquier script largo escriben su avance en `data/out/progreso.log`, una línea por comuna o capa con el formato `HH:MM:SS <región> <comuna> i/total` (para capas: `HH:MM:SS <servicio> <capa> i/total`), y además la imprimen con `flush=True`. Se usa `etl/progreso.py`: `progreso.iniciar(path)` al partir, que reescribe el archivo, y `progreso.paso(grupo, nombre, i, total)` por unidad. Los scripts sueltos (en el scratchpad, por ejemplo) siguen la misma convención. Para seguirlo en PowerShell 5.1: `Get-Content data\out\progreso.log -Wait -Tail 5 -Encoding utf8` (sin `-Encoding utf8` las tildes salen como "RegiÃ³n").
-- No hacer commit de `data/` (caché y salidas pesan GB).
+- No hacer commit de `data/` (caché y salidas pesan GB). Las muestras versionables van en `samples/` y se generan con `python run.py muestra`, siempre sin datos de terceros (Overture, catastral.cl) ni de usuarios.
+- **Repo remoto** (privado, 30-sep-2026): `origin` = https://github.com/SebaGeoZ92/regu-ipt-etl.git. Claude Code trabaja en `master` (`etl/`, `run.py`, `tests/`, config, `fuentes/`, `docs/`). **Codex** trabaja solo en la rama `codex/sig-layouts`, en `sig/` y `samples/`, según `AGENTS.md` y `docs/SIG_LAYOUTS.md`. No tocar `sig/` salvo para integrar un PR revisado por Seba.
 - Cualquier cambio en `classify.py` debe mantener cobertura del 100% y cero traslapes en el test.
 - Antes de "arreglar" una clasificación legal, preguntar: el criterio legal lo valida el arquitecto, no el código.
