@@ -16,6 +16,7 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from shapely.geometry import box
 from shapely import make_valid
+from shapely.ops import transform as shp_transform
 
 from etl.mapa import COLORES
 
@@ -93,6 +94,25 @@ def encuadre_a_escala(bounds, rect, denominador):
     factor = 1000 * mm / denominador
     cx, cy = (a+d)/2, (b+e)/2
     return lambda u,v: (x+w/2+(u-cx)*factor, y+h/2+(v-cy)*factor), factor
+
+
+def caja_escala(sx, sy, largo):
+    """Recuadro blanco de la escala (mm), el mismo que se dibuja: origen (sx-3, sy-8), (largo+24) × 22 mm."""
+    return box(sx-3, sy-8, sx-3+largo+24, sy+14)
+
+
+def ubicar_escala(preferida, largo, rect, limite, transform, margen=7):
+    """Posición (sx, sy) de la escala: la de la plantilla si no tapa la comuna; si no, la esquina del marco
+    (inferior izquierda, inferior derecha, superior izquierda; la superior derecha es del norte) que menos la tape."""
+    x, y, w, h = rect
+    comuna = shp_transform(lambda u, v, z=None: tuple(t / mm for t in transform(u, v)), limite)
+    ancho, alto = largo + 24, 22
+    candidatas = [tuple(preferida),
+                  (x + margen + 3, y + margen + 8),
+                  (x + w - margen - ancho + 3, y + margen + 8),
+                  (x + margen + 3, y + h - margen - alto + 8)]
+    return min(candidatas, key=lambda p: (round(caja_escala(*p, largo).intersection(comuna).area, 1),
+                                          candidatas.index(p)))
 
 
 def textura(c, p, rect, patron, riesgo=False):
@@ -231,7 +251,8 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     c.setStrokeColor(HexColor('#263e36')); c.setLineWidth(1); c.line(0,-8*mm,0,4*mm)
     p=c.beginPath(); p.moveTo(0,5*mm); p.lineTo(-1.5*mm,1*mm); p.lineTo(1.5*mm,1*mm); p.close()
     c.setFillColor(HexColor('#263e36')); c.drawPath(p,fill=1,stroke=0); c.restoreState(); texto(c,nx-1,ny+8,'N',10,True)
-    sx,sy=cfg['escala_mm']; distancia=barra_escala(escala); largo=distancia*factor/mm
+    distancia=barra_escala(escala); largo=distancia*factor/mm
+    sx,sy=ubicar_escala(cfg['escala_mm'],largo,rect,limite,transform)
     c.setFillColor(HexColor('#fafbf8')); c.rect((sx-3)*mm,(sy-8)*mm,(largo+24)*mm,22*mm,fill=1,stroke=0)
     for i in range(5):
         c.setFillColor(HexColor('#263e36' if i%2==0 else '#ffffff'))

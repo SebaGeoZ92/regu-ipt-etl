@@ -76,6 +76,19 @@ def test_escala_medida_en_pdf(pdf):
         assert 10*meta['escala']/1000 == pytest.approx(meta['escala']/100)
 
 
+def test_escala_no_tapa_la_comuna(pdf):
+    """El recuadro de escala no se superpone al límite comunal (Temuco llega a la esquina inferior izquierda)."""
+    from shapely.ops import transform as shp_transform
+    from sig.render import CRS, caja_escala, encuadre_a_escala
+    meta=json.loads(pdf.with_suffix('.json').read_text(encoding='utf-8'))
+    cfg=plantilla('lamina_comuna')
+    lim=gpd.read_file(ROOT/'samples/temuco/muestra.gpkg',layer='comunas').to_crs(CRS)
+    lim=lim[lim.cut=='09101'].geometry.iloc[0]
+    tr,_=encuadre_a_escala(lim.bounds,cfg['mapa_mm'],meta['escala'])
+    comuna=shp_transform(lambda u,v,z=None: tuple(t/(72/25.4) for t in tr(u,v)),lim)
+    assert caja_escala(*meta['barra_origen_mm'],meta['barra_mm']).intersection(comuna).area < 1.0
+
+
 def test_escala_estandar_y_barra():
     from sig.render import barra_escala, escala_estandar, etiqueta_distancia
     assert escala_estandar(142539.4) == 150000
