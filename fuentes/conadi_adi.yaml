@@ -1,0 +1,34 @@
+# Contrato de datos · docs/FUENTES_BAJO_DEMANDA.md
+id: conadi_adi
+nombre: Áreas de Desarrollo Indígena (ADI)
+institucion: CONADI
+estado: propuesta
+responsable_contacto: null
+obtenido_via: null
+solicitud_transparencia: null
+acceso:
+  tipo: null
+  url: null
+  url_referencia: null              # por verificar (Paso 0)
+  frecuencia_refresco: null
+licencia: null
+escala: null
+fecha_datos: null
+diccionario: []
+mapeo: []
+excluir_siempre: [RUT, NOMBRE, DIRECCION, TELEFONO, EMAIL]
+condicionante:
+  nivel: informativo
+  efecto: >-
+    BORRADOR: El predio está dentro de un Área de Desarrollo Indígena (Ley 19.253, art. 26). Es contexto
+    territorial: por sí sola no restringe la construcción, pero orienta la acción del Estado en el área.
+demanda:
+  preguntas_que_responde: ["¿Mi terreno está en un Área de Desarrollo Indígena?"]
+  umbral_activacion: 25
+  relevante_si:                     # BORRADOR: todas las clases y regiones hasta conocer la cobertura de las ADI
+    clases: [U1, U2, U3, E, R1, R2]
+    regiones_cut: null
+notas: Contexto, no restricción. Conviene activarla junto con conadi_tierras_indigenas.
+notas_eticas: >
+  Publicar solo el polígono del ADI y su nombre oficial. Revisar la redacción con el arquitecto y, idealmente,
+  con alguien vinculado a CONADI o a comunidades.
