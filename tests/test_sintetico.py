@@ -263,6 +263,21 @@ def test_end_to_end():
         assert [(p["clase"], p["zona"]) for p in f["particion"]] == [("U1", "ZU-4")]
         assert q["09101"]["ha_extension_costera"] > 0 and q["09102"]["ha_extension_costera"] == 0
 
+        # Demanda (FUENTES_BAJO_DEMANDA.md): cada ficha deja una línea en <tmp>/demanda/consultas.jsonl, SIN coordenadas
+        reg = (tmp / "demanda" / "consultas.jsonl").read_text(encoding="utf-8").splitlines()
+        lineas = [json.loads(x) for x in reg]
+        assert len(lineas) == 5, len(lineas)                           # las 5 fichas de arriba
+        assert all(set(x) == {"fecha", "region", "cut", "comuna", "clase", "cobertura", "fuentes_relevantes_no_activas"}
+                   for x in lineas)
+        assert not any(re.search(r"-7[0-9]\.\d{3}|-3[0-9]\.\d{3}", x) for x in reg)   # ninguna coordenada
+        cruce = next(x for x in lineas if x["cut"] == "09101" and "conadi_tierras_indigenas" in x["fuentes_relevantes_no_activas"])
+        assert "mma_humedales_urbanos" in cruce["fuentes_relevantes_no_activas"]   # el polígono U1+R2 toca ambas
+        mar = next(x for x in lineas if x["cobertura"] == "fuera_dpa")
+        assert mar["fuentes_relevantes_no_activas"] == [] and mar["cut"] is None
+        fp = ficha(Point(-72.52, -38.69), prod["gpkg"], registrar=False)
+        assert {x["id"] for x in fp["fuentes_pendientes"]} == {"conadi_adi", "mma_humedales_urbanos"}   # U1 en Temuco
+        assert len((tmp / "demanda" / "consultas.jsonl").read_text(encoding="utf-8").splitlines()) == 5  # registrar=False
+
         # vigencia (Portal IPT) en ficha y mapa, vía vigencia_match.csv junto al GPKG
         assert f["particion"][0]["vigencia"] is None                   # sin match: no se inventa
         pd.DataFrame([{"ipt_tipo": "PRC", "ipt_nombre": "Temuco", "cut": "09101", "portal_id": 1055, "portal_tipo": "PRC",

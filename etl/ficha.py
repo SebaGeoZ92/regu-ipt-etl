@@ -11,14 +11,17 @@ Contrato (docs/CONDICIONANTES.md), MVP sin condicionantes:
       "cobertura": "completa" | "parcial" | "fuera_dpa",
       "fuera_de_cobertura": bool,      # cobertura != "completa"
       "motivo": str | None,            # texto para el usuario cuando no es "completa"
+      "fuentes_pendientes": [{"id", "nombre", "estado", "preguntas"}],   # relevantes y aún no activas
       "aviso": "..."
     }
+Cada consulta queda registrada en data/demanda/consultas.jsonl (comuna y región, sin coordenadas).
 Lee el GPKG de build (capas capa_ipt y afectaciones) con filtro por bbox, que usa el índice espacial del GPKG.
 Para un punto, pct = 100 en la pieza que lo contiene; para un polígono, % del área del polígono (ESRI:102033).
 """
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 import geopandas as gpd
@@ -46,9 +49,39 @@ def _txt(v):
     return None if v is None or (isinstance(v, float) and pd.isna(v)) else v
 
 
-def ficha(geom_4326: BaseGeometry, gpkg: str | Path) -> dict:
-    """Ficha de un punto o polígono en EPSG:4326 contra un GPKG de build."""
-    gpkg = Path(gpkg)
+def ficha(geom_4326: BaseGeometry, gpkg: str | Path, registrar: bool = True,
+          dir_demanda: str | Path | None = None, dir_fuentes: str | Path | None = None) -> dict:
+    """Ficha de un punto o polígono en EPSG:4326 contra un GPKG de build.
+
+    Además (docs/FUENTES_BAJO_DEMANDA.md): agrega 'fuentes_pendientes' (fuentes relevantes aún no activas) y, si
+    registrar=True, anota la consulta en <dir_demanda>/consultas.jsonl (por defecto data/demanda, junto a
+    data/out) SIN coordenadas. Un error al registrar nunca rompe la ficha."""
+    out = _calcular(geom_4326, Path(gpkg))
+    try:
+        from .fuentes import DIR_FUENTES, cargar_contratos, registrar_demanda, relevantes
+        contratos = _contratos(Path(dir_fuentes) if dir_fuentes else DIR_FUENTES, cargar_contratos)
+        out["fuentes_pendientes"] = [{"id": f, "nombre": contratos[f]["nombre"], "estado": contratos[f]["estado"],
+                                      "preguntas": contratos[f]["demanda"]["preguntas_que_responde"]}
+                                     for f in relevantes(out, contratos)]
+        if registrar:
+            registrar_demanda(out, Path(dir_demanda) if dir_demanda else Path(gpkg).resolve().parent.parent / "demanda",
+                              contratos)
+    except Exception as ex:   # la demanda es secundaria: nunca bloquea la ficha
+        logging.getLogger(__name__).warning("Registro de demanda omitido: %s", ex)
+        out.setdefault("fuentes_pendientes", [])
+    return out
+
+
+_CONTRATOS: dict = {}
+
+
+def _contratos(d: Path, cargar) -> dict:
+    if d not in _CONTRATOS:
+        _CONTRATOS[d] = cargar(d)
+    return _CONTRATOS[d]
+
+
+def _calcular(geom_4326: BaseGeometry, gpkg: Path) -> dict:
     es_punto = geom_4326.geom_type in ("Point", "MultiPoint")
     capa = _leer(gpkg, "capa_ipt", geom_4326)
     afec = _leer(gpkg, "afectaciones", geom_4326)
