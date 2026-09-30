@@ -24,6 +24,7 @@ import json
 import logging
 import re
 import sys
+from datetime import date
 from pathlib import Path
 
 import geopandas as gpd
@@ -428,6 +429,59 @@ def cmd_volumen(cfg, args):
     sys.exit("Uso: python run.py volumen candidatas|footprints|plantilla --ipt ...")
 
 
+def cmd_muestra(cfg, args):
+    """Muestra liviana y versionable (samples/<nombre>/): comuna(s) + vecinas, sin attrs_raw ni datos de terceros
+    (nada de Overture, catastral.cl ni data/demanda). Para que otros agentes (Codex) trabajen sin data/."""
+    import shutil
+    c = cfg["comunas"]
+    if not args.region or not args.cut:
+        sys.exit("Uso: python run.py muestra --region ARAUCANIA --cut 09101 [--nombre temuco]")
+    suf = norm_txt(args.region).lower().replace(" ", "_")
+    out = ROOT / cfg["paths"]["out"]
+    gpkg = Path(args.gpkg) if args.gpkg else (sorted(out.glob(f"regu_ipt_{suf}_*.gpkg")) or [None])[-1]
+    if not gpkg or not gpkg.exists():
+        sys.exit(f"No hay GPKG de la región. Corre primero: python run.py build --region {args.region}")
+    com = cargar_comunas(cfg, args.region).to_crs(4326)
+    centro = com[com[c["field_cut"]].isin(args.cut.split(","))]
+    sel = com[com.intersects(centro.union_all().buffer(1e-4))]          # la(s) comuna(s) y sus vecinas
+    cuts = set(sel[c["field_cut"]])
+    dest = ROOT / "samples" / (args.nombre or norm_txt(centro[c["field_nombre"]].iloc[0]).lower().replace(" ", "_"))
+    dest.mkdir(parents=True, exist_ok=True)
+    g = dest / "muestra.gpkg"
+    g.unlink(missing_ok=True)
+    for capa in ("capa_ipt", "afectaciones"):
+        d = gpd.read_file(gpkg, layer=capa)
+        d = d[d["cut"].isin(cuts)].drop(columns=[x for x in ("attrs_raw",) if x in d])
+        d.to_file(g, layer=capa, driver="GPKG")
+    sel.rename(columns={c["field_cut"]: "cut", c["field_nombre"]: "comuna", c["field_region"]: "region"}) \
+       [["cut", "comuna", "region", "geometry"]].to_file(g, layer="comunas", driver="GPKG")
+    pm = out / f"mapa_{suf}" / "capa_ipt.pmtiles"
+    if pm.exists() and pm.stat().st_size < 50e6:
+        shutil.copy2(pm, dest / f"capa_ipt_{suf}.pmtiles")
+    (dest / "README.md").write_text(README_MUESTRA.format(
+        comunas=", ".join(sorted(sel[c["field_nombre"]])), gpkg=gpkg.name, region=args.region,
+        pmtiles=f"capa_ipt_{suf}.pmtiles" if pm.exists() else "(no generado)", fecha=date.today().isoformat()), encoding="utf-8")
+    log.info("Muestra: %s (%.1f MB) · %d comunas: %s", dest, sum(f.stat().st_size for f in dest.iterdir()) / 1e6,
+             len(cuts), ", ".join(sorted(sel[c["field_nombre"]])))
+
+
+README_MUESTRA = """# Muestra {comunas}
+
+Muestra liviana y versionable del Atlas Normativo, generada con `python run.py muestra` el {fecha}
+desde `{gpkg}` (build de {region}). Sirve para trabajar sin `data/` (que no se versiona).
+
+- `muestra.gpkg`: capas `capa_ipt` (partición U1…R2), `afectaciones` y `comunas`, en EPSG:4326, recortadas a:
+  {comunas}. Sin `attrs_raw`.
+- `{pmtiles}`: la partición de toda la región en PMTiles (lo que usa el mapa).
+
+Fuentes: IDE MINVU (geoide.minvu.cl), Portal IPT MINVU y División comunal BCN. **No** incluye datos de
+catastral.cl, Overture Maps ni registros de demanda.
+
+**Información referencial.** No reemplaza el Certificado de Informaciones Previas (CIP), que emite solo la
+Dirección de Obras Municipales (OGUC art. 1.4.4). `legal_refs.json` está en BORRADOR.
+"""
+
+
 def cmd_importar_revision(cfg, args):
     if not args.archivo:
         sys.exit("Uso: python run.py importar-revision <csv>")
@@ -441,7 +495,9 @@ def cmd_importar_revision(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
-                                    "mapa", "vigencia", "fuentes", "volumen"])
+                                    "mapa", "vigencia", "fuentes", "volumen", "muestra"])
+    ap.add_argument("--cut", help="muestra: CUT(s) centrales separados por coma, p.ej. 09101")
+    ap.add_argument("--nombre", help="muestra: carpeta en samples/ (por defecto, la comuna central)")
     ap.add_argument("--ipt", help='volumen: nombre del PRC (ipt_nombre), p.ej. "Temuco"')
     ap.add_argument("--zona", help="volumen plantilla: zona elegida por el arquitecto")
     ap.add_argument("--predios", help="volumen candidatas: GeoParquet catastral local (GEOSAL), opcional")
@@ -484,6 +540,8 @@ def main():
         cmd_fuentes(cfg, args)
     if args.cmd == "volumen":
         cmd_volumen(cfg, args)
+    if args.cmd == "muestra":
+        cmd_muestra(cfg, args)
 
 
 if __name__ == "__main__":

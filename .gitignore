@@ -1,7 +1,14 @@
 .venv/
 __pycache__/
-data/raw/
-data/out/
-data/base/
 *.zip
-data/demanda/
+
+# Datos: NUNCA se versionan (caché MINVU, salidas, bases, demanda de usuarios, footprints de Overture,
+# catastro). Pesan GB y parte tiene licencias o privacidad que no permiten redistribuir.
+data/
+
+# Muestras livianas (samples/) SÍ se versionan, generadas con `python run.py muestra`.
+# Nunca con datos de terceros ni de usuarios:
+samples/**/*.parquet
+samples/**/*.jsonl
+samples/**/*overture*
+samples/**/*catastral*
