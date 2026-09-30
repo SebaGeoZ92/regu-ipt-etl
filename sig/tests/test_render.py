@@ -65,12 +65,23 @@ def test_escala_medida_en_pdf(pdf):
         assert len(segmentos)==5
         ancho=max(r.x1 for r in segmentos)-min(r.x0 for r in segmentos)
         assert min(r.x0 for r in segmentos)==pytest.approx(sx*pt,abs=.01)
-        assert ancho/pt*meta['escala']/1000==pytest.approx(5000,abs=.1)
+        assert ancho/pt*meta['escala']/1000==pytest.approx(meta['barra_m'],abs=.1)
+        assert 25 <= meta['barra_mm'] <= 60
+        # Escala estándar de la serie 1/1,5/2/2,5/5/7,5 × 10^n (Temuco: 1:150.000)
+        assert meta['escala'] == 150000
         assert sum(meta['porcentajes'].values())==pytest.approx(100)
         escala_impresa=f"1:{meta['escala']:,.0f}".replace(',','.')
         assert escala_impresa in p.get_text()
         # Una distancia física de 1 cm expresa el denominador / 100 metros.
         assert 10*meta['escala']/1000 == pytest.approx(meta['escala']/100)
+
+
+def test_escala_estandar_y_barra():
+    from sig.render import barra_escala, escala_estandar, etiqueta_distancia
+    assert escala_estandar(142539.4) == 150000
+    assert escala_estandar(18000) == 20000 and escala_estandar(20000) == 20000 and escala_estandar(76000) == 100000
+    assert barra_escala(150000) == 5000 and barra_escala(20000) == 1000 and barra_escala(5000) == 250
+    assert etiqueta_distancia(5000) == '5 km' and etiqueta_distancia(2500) == '2,5 km' and etiqueta_distancia(250) == '250 m'
 
 
 def test_snapshot(pdf):

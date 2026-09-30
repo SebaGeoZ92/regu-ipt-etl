@@ -64,6 +64,37 @@ def encuadre(bounds, rect, margen=1.10):
     return lambda u,v: (x+w/2+(u-cx)*factor, y+h/2+(v-cy)*factor), factor
 
 
+SERIE_ESCALAS = (1, 1.5, 2, 2.5, 5, 7.5)
+DISTANCIAS_BARRA_M = (50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000)
+
+
+def escala_estandar(denominador):
+    """Menor escala de la serie 1/1,5/2/2,5/5/7,5 × 10^n que es >= al denominador del encuadre (así el mapa cabe)."""
+    base = 10 ** math.floor(math.log10(denominador))
+    for f in SERIE_ESCALAS + (10,):
+        if f * base >= denominador - 1e-6:
+            return int(round(f * base))
+
+
+def barra_escala(denominador, min_mm=25, max_mm=60):
+    """Distancia redonda de la barra (m) cuyo largo impreso queda entre min_mm y max_mm, lo más larga posible."""
+    candidatas = [d for d in DISTANCIAS_BARRA_M if min_mm <= d * 1000 / denominador <= max_mm]
+    return max(candidatas) if candidatas else min(DISTANCIAS_BARRA_M, key=lambda d: abs(d * 1000 / denominador - max_mm))
+
+
+def etiqueta_distancia(m):
+    return f'{m/1000:g} km'.replace('.', ',') if m >= 1000 else f'{m:g} m'
+
+
+def encuadre_a_escala(bounds, rect, denominador):
+    """Como encuadre(), pero con una escala fija: 1 m del terreno = 1000/denominador mm en el papel."""
+    x, y, w, h = [v * mm for v in rect]
+    a, b, d, e = bounds
+    factor = 1000 * mm / denominador
+    cx, cy = (a+d)/2, (b+e)/2
+    return lambda u,v: (x+w/2+(u-cx)*factor, y+h/2+(v-cy)*factor), factor
+
+
 def textura(c, p, rect, patron, riesgo=False):
     if patron == 'liso':
         return
@@ -158,8 +189,10 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     texto(c,tx,ty-9,' · '.join(x for x in (f'Comuna de {nombre}', region, f'CUT {cut}') if x),12)
     texto(c,350,ty,'LÁMINA COMUNAL / 01',9,True)
     rect=cfg['mapa_mm']; x,y,w,h=rect
-    transform,factor=encuadre(limite.bounds,rect,1.16)
-    escala=1000*mm/factor
+    # Escala estándar (redondeada hacia arriba desde el encuadre, para que la comuna siga cabiendo en el marco)
+    _,factor_ajuste=encuadre(limite.bounds,rect,1.16)
+    escala=escala_estandar(1000*mm/factor_ajuste)
+    transform,factor=encuadre_a_escala(limite.bounds,rect,escala)
     c.saveState()
     marco=c.beginPath(); marco.rect(x*mm,y*mm,w*mm,h*mm)
     c.clipPath(marco,stroke=0,fill=0)
@@ -197,13 +230,14 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     c.setStrokeColor(HexColor('#263e36')); c.setLineWidth(1); c.line(0,-8*mm,0,4*mm)
     p=c.beginPath(); p.moveTo(0,5*mm); p.lineTo(-1.5*mm,1*mm); p.lineTo(1.5*mm,1*mm); p.close()
     c.setFillColor(HexColor('#263e36')); c.drawPath(p,fill=1,stroke=0); c.restoreState(); texto(c,nx-1,ny+8,'N',10,True)
-    sx,sy=cfg['escala_mm']; distancia=5000; largo=distancia*factor/mm
+    sx,sy=cfg['escala_mm']; distancia=barra_escala(escala); largo=distancia*factor/mm
     c.setFillColor(HexColor('#fafbf8')); c.rect((sx-3)*mm,(sy-8)*mm,(largo+24)*mm,22*mm,fill=1,stroke=0)
     for i in range(5):
         c.setFillColor(HexColor('#263e36' if i%2==0 else '#ffffff'))
         c.setStrokeColor(HexColor('#263e36')); c.setLineWidth(.5)
         c.rect((sx+i*largo/5)*mm,sy*mm,largo/5*mm,2*mm,fill=1,stroke=1)
-    texto(c,sx,sy-4,'0',8); texto(c,sx+largo-3,sy-4,'5 km',8)
+    etq=etiqueta_distancia(distancia)
+    texto(c,sx,sy-4,'0',8); texto(c,sx+largo-stringWidth(etq,'Helvetica',8)/mm/2,sy-4,etq,8)
     texto(c,sx,sy+6,f'1:{escala:,.0f}'.replace(',','.')+' · imprimir al 100 %',9,True)
     # Leyenda y estadísticas de la superficie del producto, sin doble conteo.
     px,py,pw,ph=cfg['panel_mm']; yy=py+ph-5
