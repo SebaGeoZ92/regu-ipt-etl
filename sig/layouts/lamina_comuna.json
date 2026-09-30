@@ -11,6 +11,8 @@
   "escala_mm": [22, 58],
   "norte_mm": [269, 237],
   "titulo_mm": [12, 277],
+  "codigo": "LÁMINA COMUNAL / 01",
+  "codigo_mm": [350, 277],
   "rotulo_mm": [12, 35],
   "aviso_mm": [12, 13],
   "tamano_texto_pt": 8,

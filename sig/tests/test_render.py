@@ -98,8 +98,19 @@ def test_plantilla_invalida():
     cfg=plantilla('lamina_comuna'); cfg['tamano_texto_pt']=6
     with pytest.raises(jsonschema.ValidationError,match='minimum'):
         jsonschema.validate(cfg,json.loads((SIG/'layouts/_esquema.json').read_text(encoding='utf-8')))
+    cfg=plantilla('lamina_comuna'); cfg['codigo_mm']=[350]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(cfg,json.loads((SIG/'layouts/_esquema.json').read_text(encoding='utf-8')))
     r=subprocess.run([sys.executable,'-m','sig.render','--layout','no_existe','--cut','09101','--salida','/tmp/no.pdf'],cwd=ROOT,capture_output=True,text=True)
     assert r.returncode!=0 and 'error:' in r.stderr
+
+
+def test_panel_desborda_segun_minimapa(tmp_path):
+    """El límite del panel se deriva del minimapa de la plantilla: si el minimapa sube, los instrumentos no caben
+    y se levanta un error claro (no se trunca texto)."""
+    cfg=plantilla('lamina_comuna'); mx,my,mw,mh=cfg['minimapa_mm']; cfg['minimapa_mm']=[mx,my+80,mw,mh]
+    with pytest.raises(ValueError,match='exceden el panel'):
+        generar('09101',tmp_path/'x.pdf',ROOT/'samples/temuco/muestra.gpkg',ROOT/'samples/temuco/capa_ipt_araucania.pmtiles',cfg)
 
 
 def test_muestra_sin_vigencia_opcional(tmp_path):

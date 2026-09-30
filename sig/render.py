@@ -187,7 +187,8 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     tx,ty=cfg['titulo_mm']
     texto(c,tx,ty,cfg['titulo'],23,True)
     texto(c,tx,ty-9,' · '.join(x for x in (f'Comuna de {nombre}', region, f'CUT {cut}') if x),12)
-    texto(c,350,ty,'LÁMINA COMUNAL / 01',9,True)
+    cx_,cy_=cfg.get('codigo_mm',[350,ty])
+    texto(c,cx_,cy_,cfg.get('codigo','LÁMINA COMUNAL / 01'),9,True)
     rect=cfg['mapa_mm']; x,y,w,h=rect
     # Escala estándar (redondeada hacia arriba desde el encuadre, para que la comuna siga cabiendo en el marco)
     _,factor_ajuste=encuadre(limite.bounds,rect,1.16)
@@ -259,8 +260,9 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
         yy=parrafo(c,px,yy,f'{fila.ipt_norma or "Sin decreto en la muestra"} · {fila.ipt_fecha or "Sin fecha"}',pw,8)
         if fila.ipt_ultmod: yy=parrafo(c,px,yy,f'Última modificación: {fila.ipt_ultmod}',pw,8)
         yy-=3
-    if yy < 119: raise ValueError('Instrumentos exceden el panel: ajustar plantilla; no se recorta texto')
     mx,my,mw,mh=cfg['minimapa_mm']
+    # El panel termina donde empieza el título del minimapa (my+mh+6 mm) más un respiro de 7 mm
+    if yy < my+mh+13: raise ValueError('Instrumentos exceden el panel: ajustar plantilla; no se recorta texto')
     texto(c,px,my+mh+6,'UBICACIÓN · '+region_corta(region).upper() if region else 'UBICACIÓN',9,True)
     reg=regional(str(pmtiles)); tr,_=encuadre(reg.bounds,[mx,my,mw,mh])
     c.setFillColor(HexColor('#dce1d7')); c.drawPath(trazado(c,reg,tr),fill=1,stroke=0,fillMode=0)
