@@ -27,9 +27,9 @@ el reparto de trabajo entre agentes y las reglas que no se pueden romper.
 - Trabaja **solo** en la rama `codex/sig-layouts`, creada desde `master`. No hagas push a `master` ni lo rebasees.
 - Toca **solo** `sig/` (lo que produzcas) y `samples/` (si necesitas otra muestra, documenta en su README cómo se
   generó; los datos se regeneran con `python run.py muestra`, que es de Claude Code).
-- Sigue la especificación de **`docs/SIG_LAYOUTS.md`**. **PENDIENTE (30-sep-2026): ese archivo todavía no está
-  en el repo.** No empieces a producir layouts hasta que exista en `master`; mientras tanto, solo explora las
-  muestras.
+- Sigue la especificación de **`docs/SIG_LAYOUTS.md`** (primer entregable: "Lámina normativa comunal"; segundo:
+  "Ficha predial" con un polígono sintético). La muestra cumple su contrato de entrada, incluida la vigencia
+  (`ipt_norma`, `ipt_fecha`, `ipt_ultmod`, `ord_url`) donde existe.
 - Datos de trabajo: `samples/temuco/muestra.gpkg` (capas `capa_ipt`, `afectaciones`, `comunas`, EPSG:4326) y
   `samples/temuco/capa_ipt_araucania.pmtiles`. Campos y clases: ver "Clases" y "Arquitectura" en `CLAUDE.md`.
 - Todo layout muestra el aviso de información referencial y cita las fuentes (IDE MINVU, Portal IPT MINVU,
