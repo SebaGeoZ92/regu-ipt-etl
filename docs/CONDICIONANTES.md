@@ -18,16 +18,25 @@ Producto de datos: **Atlas Normativo** (partición + afectaciones + condicionant
 
 ## Fuentes (en este orden)
 
-| # | Condicionante | Fuente | Nivel | Notas |
+> **Migrado (29-sep-2026) al formato de contrato de `docs/FUENTES_BAJO_DEMANDA.md`.** Cada fuente se declara
+> en `fuentes/<id>.yaml` (acceso, licencia, diccionario, mapeo, `excluir_siempre`, condicionante y demanda),
+> validado contra `fuentes/_esquema.json`. Esta tabla queda como índice; el contrato manda.
+
+| # | Condicionante | Contrato | Nivel | Estado |
 |---|---|---|---|---|
-| 1 | Humedales urbanos declarados (Ley 21.202) | MMA, sistema de humedales urbanos (sistemahumedales.mma.gob.cl / humedaleschile.mma.gob.cl) | restriccion | Pocos polígonos, efecto legal directo. Incluir estado (declarado / en trámite) si la fuente lo trae. |
-| 2 | Capacidad de uso y series de suelo | CIREN, estudios agrológicos, vía IDE MINAGRI (ide.minagri.gob.cl, sección descargas) | alerta en R1/R2, informativo en U | Clase I–VIII, serie, profundidad, drenaje. Cobertura parcial: registrar qué comunas NO tienen estudio agrológico. Confirmar licencia (parte es CC BY 4.0 CIREN). |
-| 3 | Catastro de uso de suelo y vegetación | CONAF, vía IDE MINAGRI (servicio Uso de la Tierra CONAF) | alerta | Filtrar las categorías de bosque nativo. Escala regional, con fecha distinta por región. |
-| 4 | Áreas silvestres protegidas (SNASPE) | IDE MINAGRI (servicio Áreas Silvestres Protegidas) | restriccion | Barata de integrar. |
+| 1 | Humedales urbanos declarados (Ley 21.202) | `fuentes/mma_humedales_urbanos.yaml` | restriccion | propuesta |
+| 2 | Capacidad de uso y series de suelo (CIREN) | `fuentes/ciren_capacidad_uso.yaml` | alerta en R1/R2/E, informativo en U | propuesta |
+| 3 | Bosque nativo (catastro CONAF) | `fuentes/conaf_bosque_nativo.yaml` | alerta | propuesta |
+| 4 | Áreas silvestres protegidas (SNASPE), IDE MINAGRI | **sin contrato todavía**: no está entre las seis candidatas de FUENTES_BAJO_DEMANDA.md (pendiente decidir si se agrega) | restriccion | — |
+
+Además, FUENTES_BAJO_DEMANDA.md agrega `conadi_tierras_indigenas`, `conadi_adi` y `sag_subdivisiones`.
 
 **Paso 0 para el agente:** encontrar el acceso real de cada fuente (ArcGIS REST, WFS, shapefile descargable), su licencia y su fecha. Documentarlo en CLAUDE.md bajo "Hechos verificados" **antes** de escribir código. Si una fuente no tiene descarga automatizable, dejar el procedimiento manual documentado y seguir con la siguiente.
 
-## Configuración (`config.yaml`)
+## Configuración
+
+**Reemplazado por los contratos en `fuentes/<id>.yaml`** (una sola forma de declarar fuentes). El bloque que
+sigue era la propuesta original para `config.yaml` y se conserva solo como referencia:
 
 ```yaml
 condicionantes:
@@ -46,6 +55,7 @@ condicionantes:
 
 ## Código
 
+- La descarga e integración de cada fuente irá por `run.py fuentes activar <id>` (FUENTES_BAJO_DEMANDA.md), según su `mapeo`. Hoy existen `etl/fuentes.py` (contratos, relevancia, registro de demanda) y `run.py fuentes estado|validar`; **ninguna fuente está activa**.
 - `etl/condicionantes.py`: `descargar(nombre)`, `normalizar(nombre) -> GeoDataFrame` con columnas estándar `condicionante, nivel, nombre, detalle, fecha_fuente, escala, licencia, fuente_url, attrs_raw, geometry`, y `recortar(gdf, comunas)` para asignar `cut` y `comuna`.
 - `run.py condicionantes [--region X] [--solo nombre]`: descarga, normaliza y escribe la capa `condicionantes` en el mismo GPKG, más `qa_condicionantes_<tag>.csv` (por comuna: cobertura % de cada condicionante y marca `sin_cobertura` donde la fuente no llega).
 - `etl/ficha.py`: **`ficha(geom_4326) -> dict`**, el germen del pre-CIP. Recibe un polígono (predio) o un punto y devuelve:
