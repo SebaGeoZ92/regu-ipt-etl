@@ -13,6 +13,8 @@ Uso:
   python run.py mapa --region ARAUCANIA                             # HTML autocontenido con PMTiles (para enviar)
   python run.py vigencia [--region X] [--refresh]                   # cruce Portal IPT ↔ servidor (brechas)
   python run.py fuentes estado|validar                              # fuentes bajo demanda (docs/FUENTES_BAJO_DEMANDA.md)
+  python run.py volumen footprints|candidatas --ipt "Temuco" --region ARAUCANIA   # piloto de volumen, paso 0
+  python run.py volumen plantilla --ipt "Temuco" --zona "ZH-1"      # fila vacía en data/base/normas_zona.csv
 """
 from __future__ import annotations
 
@@ -376,6 +378,56 @@ def cmd_fuentes(cfg, args):
     sys.exit("Uso: python run.py fuentes estado|validar")
 
 
+def cmd_volumen(cfg, args):
+    """Piloto de volumen (docs/VOLUMEN_PILOTO.md), paso 0: candidatas | footprints | plantilla."""
+    from etl import volumen as V
+    from etl.ficha import ultimo_gpkg
+    accion = args.archivo or "candidatas"
+    if not args.ipt:
+        sys.exit('Uso: python run.py volumen candidatas|footprints|plantilla --ipt "Temuco" [--region X] [--zona Z]')
+    out = ROOT / cfg["paths"]["out"]
+    slug = norm_txt(args.ipt).lower().replace(" ", "_")
+    dir_fp = ROOT / "data" / "base" / "footprints"
+    if accion == "plantilla":
+        if not args.zona:
+            sys.exit("Falta --zona (la que elija el arquitecto)")
+        df = V.plantilla_normas(ROOT / "data" / "base" / "normas_zona.csv", args.ipt, args.zona)
+        print(f"data/base/normas_zona.csv: {len(df)} filas; la de {args.ipt} | {args.zona} queda con las normas vacías "
+              f"para que las llene el arquitecto (estado FICTICIO | BORRADOR | VALIDADO).")
+        return
+    if args.gpkg:
+        gpkg = Path(args.gpkg)
+    elif args.region:
+        suf = norm_txt(args.region).lower().replace(" ", "_")
+        gpkg = (sorted(out.glob(f"regu_ipt_{suf}_*.gpkg")) or [None])[-1]
+    else:
+        gpkg = ultimo_gpkg(out)
+    if not gpkg or not gpkg.exists():
+        sys.exit("No hay GPKG de build (usa --region o --gpkg)")
+    capa = gpd.read_file(gpkg, layer="capa_ipt", where="ipt_tipo = 'PRC'")
+    if accion == "footprints":
+        bb = V.bbox_ipt(capa, args.ipt)
+        p = V.descargar_footprints(bb, dir_fp, slug)
+        log.info("Footprints Overture: %s (%.1f MB) · bbox %s", p, p.stat().st_size / 1e6, bb)
+        return
+    if accion == "candidatas":
+        fp_path = Path(args.footprints) if args.footprints else (sorted(dir_fp.glob(f"overture_building_*_{slug}.parquet")) or [None])[-1]
+        fp = gpd.read_parquet(fp_path) if fp_path and fp_path.exists() else None
+        if fp is None:
+            log.warning("Sin footprints: corre primero `python run.py volumen footprints --ipt %r`", args.ipt)
+        pr = gpd.read_parquet(args.predios) if args.predios else None
+        mp = gpkg.parent / "vigencia_match.csv"
+        match = pd.read_csv(mp, dtype=str, keep_default_na=False, encoding="utf-8-sig") if mp.exists() else None
+        t = V.candidatas(capa, args.ipt, fp, pr, match)
+        dest = out / f"volumen_candidatas_{slug}.csv"
+        t.to_csv(dest, index=False, encoding="utf-8-sig")
+        with pd.option_context("display.width", 220, "display.max_colwidth", 45):
+            print(t.drop(columns=["ordenanza_url", "cut"]).to_string(index=False))
+        print(f"\n{dest}" + (f"\nFootprints: {fp_path.name} ({V.ATRIBUCION_OVERTURE})" if fp is not None else ""))
+        return
+    sys.exit("Uso: python run.py volumen candidatas|footprints|plantilla --ipt ...")
+
+
 def cmd_importar_revision(cfg, args):
     if not args.archivo:
         sys.exit("Uso: python run.py importar-revision <csv>")
@@ -389,7 +441,11 @@ def cmd_importar_revision(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
-                                    "mapa", "vigencia", "fuentes"])
+                                    "mapa", "vigencia", "fuentes", "volumen"])
+    ap.add_argument("--ipt", help='volumen: nombre del PRC (ipt_nombre), p.ej. "Temuco"')
+    ap.add_argument("--zona", help="volumen plantilla: zona elegida por el arquitecto")
+    ap.add_argument("--predios", help="volumen candidatas: GeoParquet catastral local (GEOSAL), opcional")
+    ap.add_argument("--footprints", help="volumen candidatas: GeoParquet de footprints (por defecto el de data/base/footprints)")
     ap.add_argument("--lon", type=float, help="ficha: longitud (EPSG:4326)")
     ap.add_argument("--lat", type=float, help="ficha: latitud (EPSG:4326)")
     ap.add_argument("--wkt", help="ficha: geometría WKT en EPSG:4326 (punto o polígono)")
@@ -426,6 +482,8 @@ def main():
         cmd_vigencia(cfg, args)
     if args.cmd == "fuentes":
         cmd_fuentes(cfg, args)
+    if args.cmd == "volumen":
+        cmd_volumen(cfg, args)
 
 
 if __name__ == "__main__":

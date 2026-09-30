@@ -4,6 +4,8 @@ pyproj>=3.6
 pyogrio>=0.7
 requests>=2.31
 pyyaml>=6.0
+# Opcional, piloto de volumen (footprints de Overture Maps, docs/VOLUMEN_PILOTO.md):
+overturemaps>=1.0
 # Opcional, solo para cargar a PostGIS:
 # sqlalchemy>=2.0
 # geoalchemy2>=0.14

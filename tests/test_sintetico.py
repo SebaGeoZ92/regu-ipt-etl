@@ -421,6 +421,34 @@ def test_fuentes_contratos():
     assert any("excluir_siempre" in x for x in validar(_contrato_ejemplo(excluir_siempre=["TELEFONO"])))
 
 
+def test_volumen_paso0():
+    """Piloto de volumen, paso 0: candidatas por zona y plantilla de normas (vacía, sin inventar valores)."""
+    import pandas as pd
+    from etl.volumen import COLUMNAS_NORMAS, candidatas, plantilla_normas
+    capa = gpd.GeoDataFrame({
+        "ipt_tipo": ["PRC", "PRC", "PRC", "LU"], "ipt_nombre": ["Temuco", "Temuco", "Temuco", "Límite Urbano Temuco"],
+        "zona": ["ZH-1", "ZH-1", "ZC", None], "zona_desc": ["Zona habitacional mixta", None, "Zona centro", None],
+        "riesgo": [False, True, False, False], "cut": ["09101"] * 4},
+        geometry=[box(-72.60, -38.74, -72.59, -38.73), box(-72.59, -38.74, -72.58, -38.73),
+                  box(-72.60, -38.73, -72.59, -38.72), box(-72.7, -38.8, -72.5, -38.6)], crs=4326)
+    fp = gpd.GeoDataFrame({"height": [6.0, None, None]},
+                          geometry=[box(-72.5951, -38.7351, -72.5949, -38.7349), box(-72.5851, -38.7351, -72.5849, -38.7349),
+                                    box(-72.5951, -38.7251, -72.5949, -38.7249)], crs=4326)
+    match = pd.DataFrame([{"ipt_tipo": "PRC", "ipt_nombre": "Temuco", "cut": "09101", "ordenanza_url": "https://x/o.pdf"}])
+    t = candidatas(capa, "temuco", fp, None, match).set_index("zona")
+    assert list(t.index) == ["ZH-1", "ZC"]                        # residencial primero
+    assert t.loc["ZH-1", "n_footprints"] == 2 and t.loc["ZC", "n_footprints"] == 1
+    assert t.loc["ZH-1", "pct_con_altura"] == 50.0 and t.loc["ZH-1", "residencial"] and not t.loc["ZC", "residencial"]
+    assert t.loc["ZH-1", "n_predios"] == "sin datos" and t.loc["ZH-1", "ordenanza_portal"] == "sí"
+    assert 45 < t.loc["ZH-1", "pct_riesgo"] < 55                     # la mitad de ZH-1 es riesgo
+    with tempfile.TemporaryDirectory() as d:
+        p = Path(d) / "normas_zona.csv"
+        plantilla_normas(p, "Temuco", "ZH-1")
+        df = plantilla_normas(p, "TEMUCO", "zh-1")                 # no duplica
+        assert list(df.columns) == COLUMNAS_NORMAS and len(df) == 1
+        assert (df.drop(columns=["ipt_nombre", "zona"]).iloc[0] == "").all()   # normas vacías: no se inventan
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -491,6 +519,7 @@ if __name__ == "__main__":
     test_end_to_end()
     test_vigencia()
     test_fuentes_contratos()
+    test_volumen_paso0()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
