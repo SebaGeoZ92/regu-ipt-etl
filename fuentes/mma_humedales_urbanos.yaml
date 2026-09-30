@@ -1,0 +1,32 @@
+# Contrato de datos · docs/FUENTES_BAJO_DEMANDA.md (migrado de docs/CONDICIONANTES.md, fuente 1)
+id: mma_humedales_urbanos
+nombre: Humedales urbanos declarados (Ley 21.202)
+institucion: MMA
+estado: propuesta
+responsable_contacto: null
+obtenido_via: null
+solicitud_transparencia: null
+acceso:
+  tipo: null
+  url: null
+  url_referencia: https://sistemahumedales.mma.gob.cl   # o humedaleschile.mma.gob.cl; por verificar (Paso 0)
+  frecuencia_refresco: null
+licencia: null
+escala: null
+fecha_datos: null
+diccionario: []                     # esperado: nombre, estado (declarado / en trámite), fecha de declaración
+mapeo: []
+excluir_siempre: [RUT, NOMBRE_SOLICITANTE, NOMBRE, DIRECCION, TELEFONO, EMAIL]
+condicionante:
+  nivel: restriccion
+  efecto: >-
+    BORRADOR: Humedal urbano declarado (Ley 21.202). Puede postergar permisos de subdivisión, loteo y
+    construcción; aplica la ordenanza municipal de humedales.
+demanda:
+  preguntas_que_responde: ["¿Mi terreno está en un humedal urbano?", "¿Puedo construir cerca de un humedal?"]
+  umbral_activacion: 25
+  relevante_si:                     # BORRADOR: la ley se refiere a humedales dentro del límite urbano
+    clases: [U1, U2, U3, E]
+    regiones_cut: null
+notas: Pocos polígonos y efecto legal directo. Incluir el estado (declarado o en trámite) si la fuente lo trae.
+notas_eticas: null
