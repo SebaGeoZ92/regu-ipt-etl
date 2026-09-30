@@ -1,0 +1,15 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "type": "object", "additionalProperties": false,
+ "required": ["titulo","proyecto","fuentes","aviso","fecha","formato","mapa_mm","panel_mm","minimapa_mm","escala_mm","norte_mm","titulo_mm","rotulo_mm","aviso_mm","tamano_texto_pt","patrones"],
+ "properties": {
+  "titulo":{"type":"string","minLength":1}, "proyecto":{"type":"string","minLength":1}, "fuentes":{"type":"string","minLength":1},
+  "aviso":{"const":"Información referencial. No reemplaza el CIP que emite la DOM (OGUC art. 1.4.4)."},
+  "fecha":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"}, "formato":{"const":"A3-h"},
+  "mapa_mm":{"$ref":"#/$defs/rect"}, "panel_mm":{"$ref":"#/$defs/rect"}, "minimapa_mm":{"$ref":"#/$defs/rect"},
+  "escala_mm":{"$ref":"#/$defs/punto"}, "norte_mm":{"$ref":"#/$defs/punto"}, "titulo_mm":{"$ref":"#/$defs/punto"}, "rotulo_mm":{"$ref":"#/$defs/punto"}, "aviso_mm":{"$ref":"#/$defs/punto"},
+  "tamano_texto_pt":{"type":"number","minimum":7,"maximum":12},
+  "patrones":{"type":"object","required":["U1","U2","U3","E","R1","R2"],"additionalProperties":{"enum":["horizontal","vertical","cruz","puntos","diagonal","liso"]}}
+ },
+ "$defs": {"punto":{"type":"array","items":{"type":"number","minimum":0},"minItems":2,"maxItems":2},"rect":{"type":"array","items":{"type":"number","exclusiveMinimum":0},"minItems":4,"maxItems":4}}
+}
