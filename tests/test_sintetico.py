@@ -313,6 +313,50 @@ def test_end_to_end():
 
 
 
+def test_vigencia():
+    """Cruce Portal IPT ↔ servidor sin red: familias (origen + modificaciones), tabla y emparejamiento por nombre."""
+    import pandas as pd
+    from etl.vigencia import emparejar, familias, resumen_brechas, tabla_vigencia
+    doc = lambda n, t="Publicación D. O. con Ordenanza": {"tipo": t, "nombre": n, "url": f"https://x/{n}.pdf"}  # noqa: E731
+    vig = [
+        {"id": 1, "tipo": "PRC", "planificacion": "Comunal", "denominacion": "Plan Regulador Comunal de Temuco-Labranza",
+         "comunas": ["09101"], "clasificacion": "Instrumento de origen", "numeroDocumento": "149",
+         "fechaInicioVigencia": "2010-02-02", "documentos": [doc("Publicación D.O. con Ordenanza - Resolución N° 149")],
+         "instrumentosDescendientesIds": "3, 4"},
+        {"id": 2, "tipo": "PRC", "planificacion": "Comunal", "denominacion": "Aprueba Plano Regulador y límite urbano de Cajón",
+         "comunas": ["09101"], "clasificacion": "Instrumento de origen", "numeroDocumento": "540",
+         "fechaInicioVigencia": "1966-10-18", "documentos": [doc("Plano - Decreto N° 540", "Plano")],
+         "instrumentosDescendientesIds": ""},
+        {"id": 3, "tipo": "PRC", "planificacion": "Comunal", "denominacion": "Modificación Temuco", "comunas": ["09101"],
+         "clasificacion": "Modificación", "numeroDocumento": "1462", "fechaInicioVigencia": "2011-06-26",
+         "documentos": [doc("Publicación D.O. con Ordenanza - Decreto N° 1462")], "instrumentosDescendientesIds": ""},
+        {"id": 5, "tipo": "LU", "planificacion": "Comunal", "denominacion": "Límite urbano de Lumaco", "comunas": ["09207"],
+         "clasificacion": "Instrumento de origen", "numeroDocumento": "12", "fechaInicioVigencia": "1939-01-31",
+         "documentos": [], "instrumentosDescendientesIds": ""},
+        {"id": 6, "tipo": "PRDU", "planificacion": "Intercomunal", "denominacion": "PRDU", "comunas": ["09207"],
+         "clasificacion": "Instrumento de origen", "documentos": [], "instrumentosDescendientesIds": ""},
+    ]
+    fams = familias(vig)
+    f1 = next(f for f in fams if f["id"] == 1)
+    assert {f["id"] for f in fams} == {1, 2, 5}                           # modificación dentro de su familia; sin PRDU
+    assert f1["norma"] == "Resolución N° 149" and f1["ultima_modificacion"] == "2011-06-26" and f1["n_modificaciones"] == 1
+    assert f1["ordenanza_url"].endswith("149.pdf")
+    assert next(f for f in fams if f["id"] == 2)["norma"] == "Decreto N° 540"
+    serv = pd.DataFrame({"cut": ["09101", "09101", "09101", "09112"], "ipt_tipo": ["PRC", "PRC", "LU", "LU"],
+                         "ipt_nombre": ["Temuco", "Temuco Cajon", "Límite Urbano Temuco", "Límite Urbano Padre Las Casas"]})
+    comunas = pd.DataFrame({"cut": ["09101", "09112", "09207"], "comuna": ["Temuco", "Padre Las Casas", "Lumaco"],
+                            "region": ["Araucanía"] * 3})
+    t = tabla_vigencia(fams, serv, comunas).set_index(["comuna", "tipo"])
+    assert t.loc[("Temuco", "PRC"), "estado"] == "ambos"
+    assert t.loc[("Temuco", "LU"), "estado"] == "ambos" and t.loc[("Temuco", "LU"), "nota"]   # LU definido por el PRC
+    assert t.loc[("Lumaco", "LU"), "estado"] == "solo_portal"
+    assert t.loc[("Padre Las Casas", "LU"), "estado"] == "solo_servidor"
+    assert "Lumaco (LU)" in resumen_brechas(t.reset_index())["comunas_con_ipt_comunal_sin_geometria"]
+    m = emparejar(serv, fams).set_index("ipt_nombre")
+    assert m.loc["Temuco", "portal_id"] == 1 and m.loc["Temuco Cajon", "portal_id"] == 2    # Jaccard desempata
+    assert "Límite Urbano Padre Las Casas" not in m.index                                     # sin candidato: no inventa
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -381,6 +425,7 @@ def test_paginacion_arcgis():
 
 if __name__ == "__main__":
     test_end_to_end()
+    test_vigencia()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")

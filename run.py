@@ -11,6 +11,7 @@ Uso:
   python run.py ficha --lon -72.59 --lat -38.74 [--gpkg ...]       # ficha normativa preliminar (JSON)
   python run.py ficha --wkt "POLYGON((...))"
   python run.py mapa --region ARAUCANIA                             # HTML autocontenido con PMTiles (para enviar)
+  python run.py vigencia [--region X] [--refresh]                   # cruce Portal IPT ↔ servidor (brechas)
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
+import pyogrio
 import yaml
 from pyproj import Transformer
 
@@ -255,6 +257,12 @@ def cmd_build(cfg, args):
     capa = anotar_legal(capa, legal)
     sufijo = norm_txt(args.region).lower().replace(" ", "_") if args.region else "nacional"
     prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo, sin_comuna, fuera_dpa)
+    # Inventario del servidor: instrumentos cargados (aunque la partición los tape), para `run.py vigencia`
+    inv = (fuentes[fuentes["ipt_tipo"].isin(["PRC", "SECCIONAL", "LU", "PRI", "PRM"])]
+           .groupby(["servicio", "capa", "ipt_tipo", "ipt_nombre", "cut_ipt"], dropna=False).size()
+           .rename("features").reset_index())
+    inv.to_csv(Path(prod["gpkg"]).with_name(Path(prod["gpkg"]).stem.replace("regu_ipt_", "inventario_servidor_") + ".csv"),
+               index=False, encoding="utf-8-sig")
     rev = generar_revision(capa, ROOT / cfg["paths"]["out"] / "revision_arquitecto.csv")
     log.info("revision_arquitecto.csv: %d zonas con revisar=True (%d ya decididas)",
              len(rev), int((rev["decision"] != "").sum()))
@@ -297,6 +305,48 @@ def cmd_mapa(cfg, args):
     log.info("Mapa: %s (%.1f MB; PMTiles %.1f MB) · variante para publicar: %s", r["html"], r["mb_html"], r["mb_pmtiles"], r["fragmento"])
 
 
+def cmd_vigencia(cfg, args):
+    """Cruce Portal IPT ↔ servidor: tabla por comuna y tipo, resumen de brechas y emparejamiento para ficha/mapa."""
+    from etl.ficha import ultimo_gpkg
+    from etl.portal import PortalIPT
+    from etl.vigencia import emparejar, familias, resumen_brechas, tabla_vigencia
+    out = ROOT / cfg["paths"]["out"]
+    if args.gpkg:
+        gpkg = Path(args.gpkg)
+    elif args.region:
+        suf = norm_txt(args.region).lower().replace(" ", "_")
+        gpkg = (sorted(out.glob(f"regu_ipt_{suf}_*.gpkg")) or [None])[-1]
+    else:
+        gpkg = ultimo_gpkg(out)
+    if not gpkg or not gpkg.exists():
+        sys.exit("No hay GPKG de build. Corre primero: python run.py build")
+    portal = PortalIPT(ROOT / cfg["paths"]["raw"] / "portal", pause_s=float(cfg["arcgis"].get("pause_s", 0.5)) * 2)
+    fams = familias(portal.vigentes(refresh=args.refresh))
+    serv = pyogrio.read_dataframe(gpkg, layer="capa_ipt", columns=["cut", "comuna", "region", "ipt_tipo", "ipt_nombre"],
+                                  read_geometry=False).drop_duplicates()
+    comunas = serv[["cut", "comuna", "region"]].drop_duplicates().sort_values(["region", "comuna"])
+    # Presencia en servidor: instrumentos comunales desde el inventario del build (incluye los que la partición
+    # tapa, p.ej. un LU cubierto por el PRC); PRI/PRM desde la partición (no tienen comuna propia).
+    inv_p = gpkg.with_name(gpkg.stem.replace("regu_ipt_", "inventario_servidor_") + ".csv")
+    presencia = serv[serv.ipt_tipo.notna()]
+    if inv_p.exists():
+        inv = pd.read_csv(inv_p, encoding="utf-8-sig", dtype=str).rename(columns={"cut_ipt": "cut"})
+        inv = inv[inv.ipt_tipo.isin(["PRC", "SECCIONAL", "LU"]) & inv.cut.notna()][["cut", "ipt_tipo", "ipt_nombre"]]
+        presencia = pd.concat([inv, presencia[presencia.ipt_tipo.isin(["PRI", "PRM"])][["cut", "ipt_tipo", "ipt_nombre"]]])
+    else:
+        log.warning("Sin %s (build anterior): presencia en servidor según la partición", inv_p.name)
+    t = tabla_vigencia(fams, presencia, comunas)
+    tag = gpkg.stem.removeprefix("regu_ipt_")
+    t.to_csv(out / f"vigencia_{tag}.csv", index=False, encoding="utf-8-sig")
+    res = resumen_brechas(t)
+    (out / f"vigencia_resumen_{tag}.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
+    m = emparejar(serv[serv.ipt_tipo.notna()], fams)
+    m.to_csv(gpkg.parent / "vigencia_match.csv", index=False, encoding="utf-8-sig")
+    log.info("Vigencia (%s): %d filas · %s · emparejados %d instrumentos (%s)", gpkg.name, len(t),
+             res.get("por_tipo_y_estado"), len(m), m.confianza.value_counts().to_dict() if len(m) else {})
+    print(json.dumps(res, ensure_ascii=False, indent=2))
+
+
 def cmd_importar_revision(cfg, args):
     if not args.archivo:
         sys.exit("Uso: python run.py importar-revision <csv>")
@@ -309,7 +359,8 @@ def cmd_importar_revision(cfg, args):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha", "mapa"])
+    ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
+                                    "mapa", "vigencia"])
     ap.add_argument("--lon", type=float, help="ficha: longitud (EPSG:4326)")
     ap.add_argument("--lat", type=float, help="ficha: latitud (EPSG:4326)")
     ap.add_argument("--wkt", help="ficha: geometría WKT en EPSG:4326 (punto o polígono)")
@@ -342,6 +393,8 @@ def main():
         cmd_ficha(cfg, args)
     if args.cmd == "mapa":
         cmd_mapa(cfg, args)
+    if args.cmd == "vigencia":
+        cmd_vigencia(cfg, args)
 
 
 if __name__ == "__main__":
