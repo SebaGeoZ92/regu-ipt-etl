@@ -46,6 +46,12 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
 - `etl/export.py`: GPKG (`capa_ipt` con `riesgo`, más `afectaciones` con `cut`), GeoJSON RFC7946 nacional y por región, CSV de QA (`qa_comunas` con `traslape_m2`, y `qa_sin_comuna`), resumen JSON (cobertura mín/máx, traslape máx, instrumentos sin comuna) y carga opcional a PostGIS.
 - `etl/ficha.py`: `ficha(geom_4326, gpkg) -> dict` (MVP: partición + afectaciones; `condicionantes` vacía). Contrato en `docs/CONDICIONANTES.md`. CLI: `python run.py ficha --lon X --lat Y | --wkt ...`.
 - `etl/mapa.py`: `python run.py mapa --region X` genera `data/out/mapa_<region>/`, con `index.html` autocontenido (PMTiles embebido en base64, servido desde memoria a MapLibre 4.7.1 + pmtiles 3.2.1) y `artifact.html` (fragmento para publicar). Los tiles se hacen con el driver PMTiles de GDAL 3.12 (no hay tippecanoe en Windows). Hay que usar `encoding="UTF-8"` en pyogrio y `Protocol.tilev4` de pmtiles.
+- `etl/portal.py` y `etl/vigencia.py`: cliente del Portal IPT y cruce portal ↔ servidor (`python run.py vigencia`). Genera `vigencia_<tag>.csv`, `vigencia_resumen_<tag>.json` y `vigencia_match.csv`; este último lo usan `ficha()` y el mapa para mostrar la norma, la fecha y la ordenanza. `build` escribe `inventario_servidor_<tag>.csv`.
+- **Fuentes bajo demanda** (`docs/FUENTES_BAJO_DEMANDA.md`):
+  - `fuentes/<id>.yaml` guarda un contrato por fuente; hoy hay seis, todas en estado **propuesta**. `fuentes/_esquema.json` los valida.
+  - `etl/fuentes.py` contiene `validar()`, `cargar_contratos()`, `relevantes()`, `registrar_demanda()` y `estado()`.
+  - `ficha()` registra cada consulta en `data/demanda/consultas.jsonl`, **sin coordenadas**, y devuelve `fuentes_pendientes`.
+  - Comandos: `python run.py fuentes estado|validar`. **`activar` no está implementado: ninguna fuente está activa.**
 - `tests/test_sintetico.py`: escenario Temuco / Padre Las Casas / Carahue con LU duplicado, zona contenida, PRI traslapados, envolvente PRI, zonas de riesgo en PRC y PRI, COM mal escrito y afectaciones recortadas, más paginación simulada. Exige cobertura de 100% ± 0,01 y traslape < 1 m² en **cada** comuna. **Debe pasar siempre.**
 
 ## Hechos verificados del servidor MINVU (26-sep-2026)
@@ -119,7 +125,14 @@ Si se migra, basta con cambiar `paths.comunas` y los tres `field_*` en config. A
      - `PRI_Valparaiso/Límite Urbano` (id 6) es del Plan Metropolitano de Valparaíso, Satélite Aconcagua (San Felipe y Los Andes, 11 comunas). **PROVISORIO** (28-sep-2026, hasta que lo confirme el arquitecto): override `{tipo: PRI, pri_default: E}` en vez de LU. La zona se lee de `NOM` (`campo_zona` en config) y se separa por polígono con `zone_overrides`, ambos **PROVISORIOS**: "Límite de Extensión Urbana" (94,6 km²) → E y "Límite Urbano Vigente" (74,6 km²) → U (U3).
    - `revision_arquitecto.csv` nacional: 137 zonas. Incluye las `PRMS_Resguardo_*` tipificadas como PRM (pendiente).
 6. [ ] **MVP (prioridad actual)**: `ficha()` solo con partición + afectaciones (sin condicionantes), y un mapa HTML de La Araucanía con PMTiles (clic → clase, instrumento, zona, norma_titulo, aviso) que se pueda enviar a una persona para probarlo.
-7. [ ] **Fase siguiente: condicionantes territoriales** (humedales urbanos, capacidad de uso CIREN, bosque nativo CONAF, SNASPE). Especificación en `docs/CONDICIONANTES.md`. **No implementar todavía.** Empieza con su "Paso 0" (acceso, licencia y fecha de cada fuente, documentados antes de escribir código). El contrato de `ficha()` del MVP debe dejar espacio para la lista `condicionantes`.
+7. [ ] **Fase siguiente: condicionantes territoriales, como fuentes bajo demanda.** Especificación en `docs/FUENTES_BAJO_DEMANDA.md`, y en `docs/CONDICIONANTES.md` para la ficha.
+   - Hecho (29-sep-2026): esquema de contrato, seis contratos en estado `propuesta` (CONADI tierras indígenas y ADI, SAG subdivisiones, CIREN capacidad de uso, CONAF bosque nativo, MMA humedales urbanos), registro de demanda en `ficha()` y `run.py fuentes estado|validar`.
+   - Pendiente:
+     - El "Paso 0" de cada fuente: acceso real, licencia y fecha.
+     - Decidir si SNASPE, que venía de CONDICIONANTES.md, tiene su propio contrato.
+     - Implementar `fuentes activar`, con el test `mapeada → latente → activa` y la regla de que `excluir_siempre` nunca llega a la salida.
+     - Crear `fuentes/CREDITOS.md`.
+   - **No activar ninguna fuente sin decisión de Seba.**
 8. [ ] Cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
 
 ## Entorno
