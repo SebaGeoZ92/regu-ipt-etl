@@ -277,6 +277,12 @@ def test_end_to_end():
         fp = ficha(Point(-72.52, -38.69), prod["gpkg"], registrar=False)
         assert {x["id"] for x in fp["fuentes_pendientes"]} == {"conadi_adi", "mma_humedales_urbanos"}   # U1 en Temuco
         assert len((tmp / "demanda" / "consultas.jsonl").read_text(encoding="utf-8").splitlines()) == 5  # registrar=False
+        from etl.fuentes import cargar_contratos, estado
+        contratos = cargar_contratos()
+        assert len(contratos) == 6 and {c["estado"] for c in contratos.values()} == {"propuesta"}   # ninguna activa
+        est = estado(contratos, tmp / "demanda").set_index("fuente")
+        assert est.loc["conadi_tierras_indigenas", "votos_por_region"].startswith(REG)
+        assert not est.lista_para_activar.any()                        # propuesta: nunca lista, aunque haya votos
 
         # vigencia (Portal IPT) en ficha y mapa, vía vigencia_match.csv junto al GPKG
         assert f["particion"][0]["vigencia"] is None                   # sin match: no se inventa

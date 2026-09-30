@@ -12,6 +12,7 @@ Uso:
   python run.py ficha --wkt "POLYGON((...))"
   python run.py mapa --region ARAUCANIA                             # HTML autocontenido con PMTiles (para enviar)
   python run.py vigencia [--region X] [--refresh]                   # cruce Portal IPT ↔ servidor (brechas)
+  python run.py fuentes estado|validar                              # fuentes bajo demanda (docs/FUENTES_BAJO_DEMANDA.md)
 """
 from __future__ import annotations
 
@@ -347,6 +348,33 @@ def cmd_vigencia(cfg, args):
     print(json.dumps(res, ensure_ascii=False, indent=2))
 
 
+def cmd_fuentes(cfg, args):
+    """Fuentes bajo demanda (docs/FUENTES_BAJO_DEMANDA.md): estado | validar. 'activar' aún no existe."""
+    from etl.fuentes import DIR_FUENTES, cargar_contratos, estado, validar
+    accion = args.archivo or "estado"
+    dir_demanda = ROOT / "data" / "demanda"
+    if accion == "validar":
+        esquema = json.loads((DIR_FUENTES / "_esquema.json").read_text(encoding="utf-8"))
+        malos = 0
+        for p in sorted(DIR_FUENTES.glob("*.yaml")):
+            e = validar(yaml.safe_load(p.read_text(encoding="utf-8")), esquema, p)
+            malos += bool(e)
+            print(f"{'OK ' if not e else 'ERR'} {p.name}" + ("" if not e else "\n    " + "\n    ".join(e)))
+        sys.exit(1 if malos else 0)
+    if accion == "estado":
+        t = estado(cargar_contratos(), dir_demanda)
+        consultas = dir_demanda / "consultas.jsonl"
+        n = sum(1 for _ in open(consultas, encoding="utf-8")) if consultas.exists() else 0
+        print(f"Consultas registradas: {n} ({consultas})\n")
+        with pd.option_context("display.width", 200, "display.max_colwidth", 60):
+            print(t[["fuente", "estado", "votos_total", "votos_por_region", "umbral", "lista_para_activar", "falta"]]
+                  .to_string(index=False))
+        return
+    if accion == "activar":
+        sys.exit("'fuentes activar' todavía no está implementado: ninguna fuente se activa por ahora.")
+    sys.exit("Uso: python run.py fuentes estado|validar")
+
+
 def cmd_importar_revision(cfg, args):
     if not args.archivo:
         sys.exit("Uso: python run.py importar-revision <csv>")
@@ -360,12 +388,12 @@ def cmd_importar_revision(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
-                                    "mapa", "vigencia"])
+                                    "mapa", "vigencia", "fuentes"])
     ap.add_argument("--lon", type=float, help="ficha: longitud (EPSG:4326)")
     ap.add_argument("--lat", type=float, help="ficha: latitud (EPSG:4326)")
     ap.add_argument("--wkt", help="ficha: geometría WKT en EPSG:4326 (punto o polígono)")
     ap.add_argument("--gpkg", help="ficha: GPKG de build (por defecto el más reciente, preferente nacional)")
-    ap.add_argument("archivo", nargs="?", help="importar-revision: CSV revision_arquitecto con 'decision' llena")
+    ap.add_argument("archivo", nargs="?", help="importar-revision: CSV con 'decision' llena · fuentes: estado|validar")
     ap.add_argument("--region", help="regex sobre el nombre de región (ej. ARAUCANIA)")
     ap.add_argument("--refresh", action="store_true", help="vuelve a descargar aunque exista caché")
     ap.add_argument("--capas", help="download: solo estas capas '<servicio>/<id>,...' (ignora el caché)")
@@ -395,6 +423,8 @@ def main():
         cmd_mapa(cfg, args)
     if args.cmd == "vigencia":
         cmd_vigencia(cfg, args)
+    if args.cmd == "fuentes":
+        cmd_fuentes(cfg, args)
 
 
 if __name__ == "__main__":
