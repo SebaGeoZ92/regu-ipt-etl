@@ -25,6 +25,10 @@ python tests/test_sintetico.py
 - Minimapa: cobertura de todas las clases del PMTiles regional a zoom 6, generalizada 100 m. Se identifica expresamente como cobertura generalizada, no como una nueva delimitación administrativa. Comuna destacada a partir de BCN.
 - Decreto, fecha y última modificación se reproducen tal como aparecen en la muestra del cruce Portal IPT. La tabla no certifica vigencia actual; los metadatos ausentes se indican, incluso cuando la entrada no contiene las columnas opcionales de vigencia o fecha de extracción. R2 no se presenta como instrumento.
 - Solo se rotulan comunas vecinas cuando el texto cabe en el marco sin colisión. No se inventan nombres de localidades ni normas de zona.
+- Escala estándar (Claude Code, 30-sep-2026): el denominador del encuadre se redondea hacia arriba a la serie 1/1,5/2/2,5/5/7,5 × 10ⁿ (Temuco: 1:150.000), y la barra usa una distancia redonda de 25 a 60 mm impresos.
+- La región del subtítulo y del minimapa sale de la capa `comunas`, y el rótulo del minimapa va junto a la silueta de la comuna, dentro del marco.
+- El recuadro de escala se ubica donde no tapa la comuna: primero la posición de la plantilla y, si no, las esquinas libres del marco. La superior derecha queda para el norte.
+- El código de lámina (`codigo`, `codigo_mm`) viene de la plantilla, y el límite del panel de instrumentos se deriva de la posición del minimapa.
 
 ## Plantilla y comprobación
 
