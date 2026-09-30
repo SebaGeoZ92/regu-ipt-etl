@@ -133,7 +133,14 @@ Si se migra, basta con cambiar `paths.comunas` y los tres `field_*` en config. A
      - Implementar `fuentes activar`, con el test `mapeada → latente → activa` y la regla de que `excluir_siempre` nunca llega a la salida.
      - Crear `fuentes/CREDITOS.md`.
    - **No activar ninguna fuente sin decisión de Seba.**
-8. [ ] Cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
+8. [ ] **Piloto de volumen** (`docs/VOLUMEN_PILOTO.md`). Paso 0 hecho el 30-sep-2026: `etl/volumen.py` y `run.py volumen footprints|candidatas|plantilla`.
+   - Footprints de Overture, release `2026-09-23.1`: 181.475 edificios en el bbox del PRC de Temuco, en `data/base/footprints/` (ODbL, capa aparte). **Casi ninguno trae `height`**, así que los pisos saldrán de la superficie construida del SII.
+   - `data/out/volumen_candidatas_temuco.csv` tiene 28 zonas; las 14 residenciales (ZH, ZHE, ZHR) van primero. El Portal IPT enlaza la ordenanza. La descripción de zona viene vacía en la capa del PRC de Temuco.
+   - Pendiente:
+     - Que Mario elija la zona; luego `run.py volumen plantilla --ipt Temuco --zona <Z>`.
+     - La ruta del GeoParquet catastral de GEOSAL para `--predios`; si no existe, usar la API de catastral.cl con `CATASTRAL_API_KEY`.
+     - Los pasos siguientes (cálculo, salidas, mapa y ficha) solo con normas llenadas por el arquitecto.
+9. [ ] Cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
 
 ## Entorno
 
