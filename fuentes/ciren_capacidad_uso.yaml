@@ -1,0 +1,35 @@
+# Contrato de datos · docs/FUENTES_BAJO_DEMANDA.md (migrado de docs/CONDICIONANTES.md, fuente 2)
+id: ciren_capacidad_uso
+nombre: Capacidad de uso y series de suelo (estudios agrológicos)
+institucion: CIREN / IDE MINAGRI
+estado: propuesta
+responsable_contacto: null
+obtenido_via: null
+solicitud_transparencia: null
+acceso:
+  tipo: null
+  url: null
+  url_referencia: https://ide.minagri.gob.cl   # sección descargas; por verificar (Paso 0)
+  frecuencia_refresco: null
+licencia: null                      # por confirmar: parte de los estudios es CC BY 4.0 CIREN
+escala: null
+fecha_datos: null
+diccionario: []                     # esperado: clase de capacidad (I–VIII), serie, profundidad, drenaje
+mapeo: []
+excluir_siempre: [RUT, NOMBRE, NOMBRE_PROPIETARIO, DIRECCION, TELEFONO, EMAIL]
+condicionante:
+  nivel: alerta
+  nivel_por_clase: {R1: alerta, R2: alerta, E: alerta, U1: informativo, U2: informativo, U3: informativo}
+  efecto: >-
+    BORRADOR: Suelo de capacidad de uso {clase} (CIREN). En suelo rural, los cambios de uso y ciertas
+    construcciones pueden requerir informe favorable del SAG (art. 55 LGUC); dato de escala regional, verificar.
+demanda:
+  preguntas_que_responde: ["¿Qué clase de suelo tiene mi terreno?", "¿Puedo construir en suelo agrícola?"]
+  umbral_activacion: 25
+  relevante_si:                     # BORRADOR: alerta en R1/R2 (y extensión urbana); informativo en U
+    clases: [R1, R2, E]
+    regiones_cut: null
+notas: >
+  Cobertura parcial: registrar qué comunas NO tienen estudio agrológico (marca sin_cobertura en el QA).
+  Escala honesta: el texto al usuario dice "posible" o "verificar".
+notas_eticas: null
