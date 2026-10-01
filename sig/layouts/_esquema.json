@@ -9,6 +9,7 @@
   "mapa_mm":{"$ref":"#/$defs/rect"}, "panel_mm":{"$ref":"#/$defs/rect"}, "minimapa_mm":{"$ref":"#/$defs/rect"},
   "escala_mm":{"$ref":"#/$defs/punto"}, "norte_mm":{"$ref":"#/$defs/punto"}, "titulo_mm":{"$ref":"#/$defs/punto"}, "rotulo_mm":{"$ref":"#/$defs/punto"}, "aviso_mm":{"$ref":"#/$defs/punto"},
   "tamano_texto_pt":{"type":"number","minimum":7,"maximum":12},
+  "codigo":{"type":"string","minLength":1,"maxLength":40}, "codigo_mm":{"$ref":"#/$defs/punto"},
   "patrones":{"type":"object","required":["U1","U2","U3","E","R1","R2"],"additionalProperties":{"enum":["horizontal","vertical","cruz","puntos","diagonal","liso"]}}
  },
  "$defs": {"punto":{"type":"array","items":{"type":"number","minimum":0},"minItems":2,"maxItems":2},"rect":{"type":"array","items":{"type":"number","exclusiveMinimum":0},"minItems":4,"maxItems":4}}
