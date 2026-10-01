@@ -18,6 +18,7 @@ from shapely.geometry import box
 from shapely import make_valid
 
 from etl.mapa import COLORES
+from sig.tipografia import registrar_verdana
 
 ROOT = Path(__file__).resolve().parents[1]
 SIG = Path(__file__).resolve().parent
@@ -88,7 +89,7 @@ def textura(c, p, rect, patron, riesgo=False):
 
 def texto(c, x, y, s, size=8, bold=False):
     c.setFillColor(HexColor('#263e36'))
-    c.setFont('Helvetica-Bold' if bold else 'Helvetica',size)
+    c.setFont('Verdana-Bold' if bold else 'Verdana',size)
     c.drawString(x*mm,y*mm,str(s))
 
 
@@ -96,7 +97,7 @@ def parrafo(c, x, y, contenido, ancho, size=8):
     linea = ''
     for palabra in str(contenido).split():
         prueba = (linea+' '+palabra).strip()
-        if stringWidth(prueba,'Helvetica',size) > ancho*mm:
+        if stringWidth(prueba,'Verdana',size) > ancho*mm:
             texto(c,x,y,linea,size); y -= size*1.35/mm; linea=palabra
         else: linea=prueba
     if linea: texto(c,x,y,linea,size); y -= size*1.35/mm
@@ -110,6 +111,7 @@ def regional(ruta):
 
 
 def generar(cut, salida, gpkg, pmtiles, cfg):
+    registrar_verdana()
     comunas = gpd.read_file(gpkg,layer='comunas').to_crs(CRS)
     seleccion = comunas[comunas.cut.astype(str).str.zfill(5)==cut]
     if len(seleccion)!=1: raise ValueError(f'CUT {cut}: se esperaba una comuna, hay {len(seleccion)}')
@@ -162,7 +164,7 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     for fila in comunas.itertuples():
         if str(fila.cut)==cut: continue
         px,py=transform(*fila.geometry.representative_point().coords[0])
-        ancho=stringWidth(fila.comuna,'Helvetica',8)
+        ancho=stringWidth(fila.comuna,'Verdana',8)
         r=box(px-ancho/2-3,py-3,px+ancho/2+3,py+10)
         if box(x*mm+5,(y+22)*mm,(x+w)*mm-5,(y+h-22)*mm).contains(r) and not any(r.intersects(o) for o in ocupadas):
             texto(c,(px-ancho/2)/mm,py/mm,fila.comuna,8); ocupadas.append(r)

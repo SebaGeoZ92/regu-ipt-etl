@@ -28,6 +28,7 @@ def test_pdf_vectorial_y_aviso(pdf):
         assert p.rect.width == pytest.approx(420*72/25.4,abs=.01)
         assert p.rect.height == pytest.approx(297*72/25.4,abs=.01)
         assert not p.get_images()
+        assert all('Verdana' in s['font'] for b in p.get_text('dict')['blocks'] if 'lines' in b for l in b['lines'] for s in l['spans'])
         assert len(p.get_drawings())>20
         texto=p.get_text()
         assert plantilla('lamina_comuna')['aviso'] in texto
@@ -94,3 +95,10 @@ def test_muestra_sin_vigencia_opcional(tmp_path):
         assert 'Sin decreto en la muestra' in texto_pdf
         assert 'Sin fecha en la muestra' in texto_pdf
         assert plantilla('lamina_comuna')['aviso'] in texto_pdf
+
+
+def test_verdana_ausente_no_se_sustituye(monkeypatch, tmp_path):
+    from sig.tipografia import registrar_verdana
+    monkeypatch.setenv('SIG_FUENTES', str(tmp_path))
+    with pytest.raises(ValueError, match='Falta Verdana original'):
+        registrar_verdana()

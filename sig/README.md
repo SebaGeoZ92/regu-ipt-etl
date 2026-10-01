@@ -37,3 +37,28 @@ Pruebas: entrada sin metadatos opcionales, tamaño físico A3, ausencia de imág
 Lote de las siete comunas: 19,69 s en la última verificación del entorno cloud (2026-09-30). El requisito de 32 comunas en menos de cinco minutos queda pendiente de validación con una entrada completa de 32 comunas; no se extrapola como resultado medido.
 
 Las dependencias están aisladas en `sig/requirements.txt`. Las salidas de ejemplo se guardan en `sig/salidas/`; los lotes de trabajo deben ir fuera del repositorio o a `data/`, que ya está ignorado.
+
+## Espacio de trabajo local
+
+```bash
+python -m sig.servidor
+```
+
+Abrir `http://127.0.0.1:8000` en el mismo equipo. Permite elegir comuna, activar capas, consultar un punto y descargar su lámina A3. No requiere Internet al ejecutarse: Leaflet está incluido con su licencia en `web/vendor/`. El mapa usa las geometrías de la muestra, sin mapa base externo.
+
+La exportación conserva la plantilla comunal: no refleja el zoom ni las capas desactivadas en el visor. El proyecto aún no permite importar capas propias, guardar proyectos, seleccionar por atributos ni editar simbología. La [arquitectura y próximos recorridos](ARQUITECTURA.md) separa lo implementado de esas etapas. Reiniciar el servidor si cambian los datos o la plantilla; la caché de lectura y de PDFs dura únicamente la sesión. El servicio escucha solo en el equipo local y no registra el contenido de consultas.
+
+## Verdana
+
+La familia elegida es **Verdana original**, regular y negrita, para toda la lámina. Las medidas y saltos de línea se calculan con esa fuente y el PDF incrusta los subconjuntos utilizados. No se sustituye silenciosamente por Helvetica cuando falta.
+
+El render busca `verdana.ttf` y `verdanab.ttf` (sin distinguir mayúsculas en los nombres de archivo) en la carpeta indicada por `SIG_FUENTES`, o en las ubicaciones habituales de Windows/macOS y `~/.local/share/fonts/verdana` en Linux. En Windows suele bastar la instalación del sistema. Para una carpeta propia, en PowerShell:
+
+```powershell
+$env:SIG_FUENTES = 'C:\MisFuentes\Verdana'
+python -m sig.render --cut 09101 --salida sig/salidas/temuco.pdf
+```
+
+Los archivos originales deben estar instalados con su licencia correspondiente; no se incluyen fuentes ni instaladores en Git. Esta verificación usó Verdana de Microsoft Core Fonts, obtenida del paquete `verdan32.exe` del proyecto Corefonts en SourceForge. Diferentes versiones de Verdana pueden cambiar ligeramente el snapshot; revisar visualmente antes de aceptar una nueva referencia.
+
+La interfaz usa Verdana instalada en el equipo del navegador. Si no existe, el navegador puede usar su sans serif de respaldo; para evaluar la tipografía elegida, instalar Verdana también en ese equipo. No se sirve ni transforma la fuente como webfont.
