@@ -66,3 +66,7 @@ python -m sig.render --cut 09101 --salida sig/salidas/temuco.pdf
 Los archivos originales deben estar instalados con su licencia correspondiente; no se incluyen fuentes ni instaladores en Git. Esta verificación usó Verdana de Microsoft Core Fonts, obtenida del paquete `verdan32.exe` del proyecto Corefonts en SourceForge. Diferentes versiones de Verdana pueden cambiar ligeramente el snapshot; revisar visualmente antes de aceptar una nueva referencia.
 
 La interfaz usa Verdana instalada en el equipo del navegador. Si no existe, el navegador puede usar su sans serif de respaldo; para evaluar la tipografía elegida, instalar Verdana también en ese equipo. No se sirve ni transforma la fuente como webfont.
+
+## Piloto de tres comunas
+
+El piloto ahora contempla **Loncoche, Temuco y Toltén**. El visor muestra qué comunas están disponibles en la entrada; no inventa las ausentes. `python -m sig.piloto` prepara el inventario y permite descargar Overture por CUT con una versión común. La propuesta de PRC de Toltén se puede cargar como escenario independiente con procedencia obligatoria, sin afectar consultas ni PDFs de la base normativa. Datos pendientes, comandos y límites en [PILOTO_TRES_COMUNAS.md](PILOTO_TRES_COMUNAS.md).

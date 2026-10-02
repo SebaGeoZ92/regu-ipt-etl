@@ -17,6 +17,7 @@ from shapely.geometry import Point
 from etl.ficha import ficha
 from etl.mapa import COLORES
 from sig.render import ROOT, SIG, generar, plantilla
+from sig.propuestas import cargar_tolten
 
 
 class Consulta(BaseModel):
@@ -25,8 +26,17 @@ class Consulta(BaseModel):
 
 
 def crear_app(gpkg=ROOT/'samples/temuco/muestra.gpkg',
-              pmtiles=ROOT/'samples/temuco/capa_ipt_araucania.pmtiles'):
+              pmtiles=ROOT/'samples/temuco/capa_ipt_araucania.pmtiles',
+              propuesta_tolten=None, metadatos_propuesta=None):
     gpkg, pmtiles = Path(gpkg), Path(pmtiles)
+    disponibles = set(gpd.list_layers(gpkg).name)
+    faltantes = {'comunas', 'capa_ipt', 'afectaciones'} - disponibles
+    if faltantes:
+        raise ValueError('Entrada del visor incompleta. Faltan capas: ' + ', '.join(sorted(faltantes)) +
+                         '. Use una muestra del contrato SIG; consulte sig/PILOTO_TRES_COMUNAS.md.')
+    if bool(propuesta_tolten) != bool(metadatos_propuesta):
+        raise ValueError('Indique la propuesta de Toltén y sus metadatos juntos')
+    propuesta = cargar_tolten(propuesta_tolten, metadatos_propuesta) if propuesta_tolten else None
     temporales = TemporaryDirectory(prefix='regu-sig-')
     bloqueo_pdf = Lock()
 
@@ -53,6 +63,8 @@ def crear_app(gpkg=ROOT/'samples/temuco/muestra.gpkg',
                                for f in leer('comunas').itertuples()], key=lambda f: f['nombre']),
             'clases': [{'codigo': c, 'color': color, 'titulo': legal['clases'][c]['titulo']}
                        for c, color in COLORES.items()],
+            'propuesta_tolten': propuesta['metadatos'] if propuesta else None,
+            'piloto': json.loads((SIG/'pilotos/araucania.json').read_text(encoding='utf-8')),
             'aviso': plantilla('lamina_comuna')['aviso'],
         }
 
@@ -64,6 +76,12 @@ def crear_app(gpkg=ROOT/'samples/temuco/muestra.gpkg',
         datos = leer(capa)
         datos = datos[datos.cut.astype(str).str.zfill(5) == cut]
         return json.loads(datos.to_json(drop_id=True))
+
+    @app.get('/api/propuestas/tolten')
+    def propuesta_de_estudio():
+        if propuesta is None:
+            raise HTTPException(404, 'Propuesta de Toltén pendiente de carga documental')
+        return propuesta['datos']
 
     @app.post('/api/consulta')
     def consultar(consulta: Consulta):
@@ -91,9 +109,17 @@ def main():
     import uvicorn
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--puerto', type=int, default=8000)
+    parser.add_argument('--gpkg', type=Path, default=ROOT/'samples/temuco/muestra.gpkg')
+    parser.add_argument('--pmtiles', type=Path, default=ROOT/'samples/temuco/capa_ipt_araucania.pmtiles')
+    parser.add_argument('--propuesta-tolten', type=Path)
+    parser.add_argument('--metadatos-propuesta', type=Path)
     args = parser.parse_args()
     # Solo equipo local; un despliegue multiusuario necesita autenticación y límites.
-    uvicorn.run(crear_app(), host='127.0.0.1', port=args.puerto, access_log=False)
+    try:
+        app = crear_app(args.gpkg, args.pmtiles, args.propuesta_tolten, args.metadatos_propuesta)
+    except ValueError as exc:
+        parser.error(str(exc))
+    uvicorn.run(app, host='127.0.0.1', port=args.puerto, access_log=False)
 
 
 if __name__ == '__main__':

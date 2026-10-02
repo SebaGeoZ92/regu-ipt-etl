@@ -1,0 +1,18 @@
+{
+  "nombre": "Piloto Loncoche · Temuco · Toltén",
+  "comunas": [
+    {"cut": "09109", "nombre": "Loncoche"},
+    {"cut": "09101", "nombre": "Temuco"},
+    {"cut": "09118", "nombre": "Toltén"}
+  ],
+  "fuente_footprints": "Overture Maps / building",
+  "separar_del_atlas": true,
+  "tolten": {
+    "rol": "Comparación de base normativa con propuesta de PRC",
+    "estado": "propuesta_no_acreditada_como_vigente",
+    "antecedente_usuario": "El usuario señala una tramitación en Contraloría pendiente desde 2012.",
+    "estado_verificacion": "Pendiente de documentos y verificación de la situación actual",
+    "fecha_documento": null,
+    "fuente_documental": null
+  }
+}

@@ -36,6 +36,7 @@ async function cargarComuna() {
     );
     if (turno !== revision) return;
     Object.values(capas).forEach(c => mapa.removeLayer(c));
+    delete capas.propuesta_tolten;
     const colores = Object.fromEntries(catalogo.clases.map(c => [c.codigo, c.color]));
     capas.capa_ipt = L.geoJSON(particion, {style: f => ({color: colores[f.properties.clase], weight: .3, fillOpacity: .8})});
     // El campo riesgo del ETL incluye la superposición ya resuelta por comuna.
@@ -53,6 +54,17 @@ async function cargarComuna() {
       const muestra = texto('span', '', 'muestra'); muestra.style.backgroundColor = clase.color;
       fila.append(muestra, texto('span', `${clase.codigo} · ${clase.titulo}`)); $('leyenda').append(fila);
     }
+    const mostrarPropuesta = cut === '09118' && catalogo.propuesta_tolten;
+    $('control-propuesta').hidden = !mostrarPropuesta;
+    $('aviso-propuesta').hidden = !mostrarPropuesta;
+    if (mostrarPropuesta) {
+      const propuesta = await obtener('/api/propuestas/tolten');
+      if (turno !== revision) return;
+      capas.propuesta_tolten = L.geoJSON(propuesta, {style: {color: '#8b2677', weight: 2, dashArray: '7 5', fillOpacity: .08},
+        onEachFeature: (f, capa) => capa.bindTooltip(texto('span', `Propuesta: ${f.properties.zona_propuesta} · no acredita vigencia`))});
+      $('aviso-propuesta').textContent = `${catalogo.propuesta_tolten.aviso} Versión: ${catalogo.propuesta_tolten.version_documental}. Fuente: ${catalogo.propuesta_tolten.fuente_documental}`;
+      visibilidad();
+    } else { delete capas.propuesta_tolten; }
     cutListo = cut;
     $('estado').textContent = `${$('comuna').selectedOptions[0].textContent} · ${particion.features.length} piezas · ${afectaciones.features.length} afectaciones en la muestra`;
   } catch (e) { if (turno === revision) $('estado').textContent = e.message; }
@@ -83,7 +95,7 @@ mapa.on('click', async e => {
   } catch (e) { if (turno === consultaActual) $('consulta').textContent = e.message; }
 });
 $('comuna').addEventListener('change', cargarComuna);
-for (const id of ['capa_ipt', 'afectaciones', 'comunas']) $(id).addEventListener('change', visibilidad);
+for (const id of ['capa_ipt', 'afectaciones', 'comunas', 'propuesta_tolten']) $(id).addEventListener('change', visibilidad);
 $('encuadrar').onclick = () => { if (limite) mapa.fitBounds(limite, {padding: [30, 30]}); };
 $('pdf').onclick = async e => {
   e.preventDefault();
@@ -103,6 +115,9 @@ $('pdf').onclick = async e => {
   try {
     catalogo = await obtener('/api/catalogo');
     $('aviso').textContent = catalogo.aviso;
+    $('cobertura').textContent = `${catalogo.comunas.length} comunas disponibles en la entrada`;
+    const disponibles = new Set(catalogo.comunas.map(c => c.cut));
+    $('piloto').textContent = catalogo.piloto.comunas.map(c => `${c.nombre}: ${disponibles.has(c.cut) ? 'disponible' : 'pendiente de datos'}`).join(' · ');
     for (const comuna of catalogo.comunas) { const o = texto('option', comuna.nombre); o.value = comuna.cut; $('comuna').append(o); }
     $('comuna').value = catalogo.comunas.some(c => c.cut === '09101') ? '09101' : catalogo.comunas[0].cut;
     $('comuna').disabled = false; await cargarComuna();
