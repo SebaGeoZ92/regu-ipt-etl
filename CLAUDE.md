@@ -154,14 +154,16 @@ Huellas de Overture (ODbL) de todo Chile, por comuna, en `data/base/footprints/`
 
 | # | Tarea | Responsable | Requiere red | Estado |
 |---|---|---|---|---|
-| S0 | Herramienta `run.py footprints descargar --region X` + `footprints estado`, test sintético (recorte, asignación por mayor área, columnas, manifiesto) | Claude Code (o Codex: el código y los tests no necesitan red) | No para los tests | en curso (Claude Code, 2026-10-02) |
-| S1 | La Araucanía: descargar, validar contra los 181.475 de Temuco y medir tiempo y MB | Claude Code | Sí | pendiente |
+| S0 | Herramienta `run.py footprints descargar --region X` + `footprints estado`, test sintético (recorte, asignación por mayor área, columnas, manifiesto) | Claude Code (o Codex: el código y los tests no necesitan red) | No para los tests | hecho (`ccb95a9`) |
+| S1 | La Araucanía: descargar, validar contra los 181.475 de Temuco y medir tiempo y MB | Claude Code | Sí | en curso (Claude Code, 2026-10-02) |
 | S2 | Norte: Arica, Tarapacá, Antofagasta, Atacama y Coquimbo | **Seba** (comando en lote) | Sí | pendiente |
 | S3 | Centro: Valparaíso, Metropolitana, O'Higgins, Maule y Ñuble | **Seba** | Sí | pendiente |
 | S4 | Sur: Biobío, Los Ríos, Los Lagos, Aysén y Magallanes | **Seba** | Sí | pendiente |
 | S5 | QA nacional: conteo y área por comuna, duplicados en bordes regionales, edificios fuera de la DPA, comunas con cobertura sospechosamente baja | Claude Code o Codex | No | pendiente |
 | S6 | Integración: la ficha predial informa n.º de edificios, m² de huella y pisos estimados; el volumen usa los footprints nacionales | Claude Code | No | pendiente |
 | S7 | Teselas: PMTiles de edificios por región, como capa aparte en el mapa, con atribución | Codex | No | pendiente |
+
+Traspaso S0 (`ccb95a9`): `etl/footprints.py` y `run.py footprints descargar|estado` listos, con test sintético en `tests/test_sintetico.py` (`test_footprints_sintetico`). Para seguir: S1 corre la herramienta real en La Araucanía.
 
 Disco: el 2-oct-2026 quedaban **7,3 GB libres** en C:. Revisar con `Get-PSDrive C` antes de S2, porque el total nacional se estima en unos pocos GB.
 
