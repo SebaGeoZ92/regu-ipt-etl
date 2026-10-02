@@ -155,7 +155,7 @@ Huellas de Overture (ODbL) de todo Chile, por comuna, en `data/base/footprints/`
 | # | Tarea | Responsable | Requiere red | Estado |
 |---|---|---|---|---|
 | S0 | Herramienta `run.py footprints descargar --region X` + `footprints estado`, test sintético (recorte, asignación por mayor área, columnas, manifiesto) | Claude Code (o Codex: el código y los tests no necesitan red) | No para los tests | hecho (`ccb95a9`) |
-| S1 | La Araucanía: descargar, validar contra los 181.475 de Temuco y medir tiempo y MB | Claude Code | Sí | en curso (Claude Code, 2026-10-02) |
+| S1 | La Araucanía: descargar, validar contra los 181.475 de Temuco y medir tiempo y MB | Claude Code | Sí | hecho (`79adca0`) |
 | S2 | Norte: Arica, Tarapacá, Antofagasta, Atacama y Coquimbo | **Seba** (comando en lote) | Sí | pendiente |
 | S3 | Centro: Valparaíso, Metropolitana, O'Higgins, Maule y Ñuble | **Seba** | Sí | pendiente |
 | S4 | Sur: Biobío, Los Ríos, Los Lagos, Aysén y Magallanes | **Seba** | Sí | pendiente |
@@ -165,6 +165,12 @@ Huellas de Overture (ODbL) de todo Chile, por comuna, en `data/base/footprints/`
 
 Traspaso S0 (`ccb95a9`): `etl/footprints.py` y `run.py footprints descargar|estado` listos, con test sintético en `tests/test_sintetico.py` (`test_footprints_sintetico`). Para seguir: S1 corre la herramienta real en La Araucanía.
 
+Traspaso S1 (`79adca0`): La Araucanía tiene **1.091.394 edificios, 117,7 MB y tardó 136 s** con el release `2026-09-23.1`.
+- Validación: los 181.475 del archivo de Temuco están todos y en la misma comuna.
+- Fuentes: Microsoft 48 %, Google 45 % y OSM 6 %. **Casi ninguno trae altura** (height 0 %, num_floors 0,56 %), así que los pisos saldrán del SII.
+- El bbox trajo 1.366.800 edificios: 260.067 eran de regiones vecinas y 15.339 quedaban fuera de la DPA; ninguno de los dos se guarda.
+- Estimación nacional: unos 1,1 a 1,5 GB y entre 40 y 60 min, con la Metropolitana como la más pesada (vigilar la RAM).
+- Para seguir: Seba corre S2 a S4 con el comando de `docs/FOOTPRINTS_NACIONAL.md`, usando `--release 2026-09-23.1` para que todo el país quede en el mismo release.
 Disco: el 2-oct-2026 quedaban **7,3 GB libres** en C:. Revisar con `Get-PSDrive C` antes de S2, porque el total nacional se estima en unos pocos GB.
 
 ## Entorno
