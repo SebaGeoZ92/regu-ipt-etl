@@ -52,6 +52,7 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
   - `etl/fuentes.py` contiene `validar()`, `cargar_contratos()`, `relevantes()`, `registrar_demanda()` y `estado()`.
   - `ficha()` registra cada consulta en `data/demanda/consultas.jsonl`, **sin coordenadas**, y devuelve `fuentes_pendientes`.
   - Comandos: `python run.py fuentes estado|validar`. **`activar` no está implementado: ninguna fuente está activa.**
+- `etl/ocupacion.py`: ocupación del suelo por zona PRC con las huellas de Overture (`python run.py ocupacion`). Detalle y criterio de medición en el Backlog, sección Volúmenes.
 - `tests/test_sintetico.py`: escenario Temuco / Padre Las Casas / Carahue con LU duplicado, zona contenida, PRI traslapados, envolvente PRI, zonas de riesgo en PRC y PRI, COM mal escrito y afectaciones recortadas, más paginación simulada. Exige cobertura de 100% ± 0,01 y traslape < 1 m² en **cada** comuna. **Debe pasar siempre.**
 
 ## Hechos verificados del servidor MINVU (26-sep-2026)
@@ -172,6 +173,21 @@ Traspaso S1 (`79adca0`): La Araucanía tiene **1.091.394 edificios, 117,7 MB y t
 - Estimación nacional: unos 1,1 a 1,5 GB y entre 40 y 60 min, con la Metropolitana como la más pesada (vigilar la RAM).
 - Para seguir: Seba corre S2 a S4 con el comando de `docs/FOOTPRINTS_NACIONAL.md`, usando `--release 2026-09-23.1` para que todo el país quede en el mismo release.
 Disco: desde el 2-oct-2026 los footprints viven en `D:\regu-data\footprints` (unos 207 GB libres); `footprints estado` informa la carpeta y el disco libre.
+
+### Volúmenes (`docs/VOLUMENES.md`)
+
+**`docs/VOLUMENES.md` no estaba en el repo ni en Downloads (2-oct-2026)**, así que solo está registrada la etapa 1, que Seba describió en el pedido. Cuando llegue el archivo, agregar aquí sus demás etapas. No se inventaron.
+
+| # | Tarea | Responsable | Requiere red | Estado |
+|---|---|---|---|---|
+| V1 | Ocupación real del suelo por zona PRC, a nivel nacional con los footprints de `paths.footprints`: CSV por zona (ipt, zona, ha, m² de huella, coeficiente de ocupación existente, n.º de edificios) y capa para el mapa coloreada por coeficiente | Claude Code | No | **hecho para La Araucanía** (`efe37e0`, `215e42e`); el nacional espera S2 a S4 |
+
+Traspaso V1: `etl/ocupacion.py` y `python run.py ocupacion [--region X] [--gpkg G]`, con test `test_ocupacion_sintetico`.
+- Procesa las regiones con manifiesto de footprints `completa: true` y escribe en `paths.out`: `ocupacion_zonas_<tag>_<fecha>.csv` (utf-8-sig), `ocupacion_<tag>_<fecha>.gpkg` (capa `ocupacion_zonas`, con `tramo` y `color`) y `ocupacion_qa_<tag>_<fecha>.json` (con la leyenda). `<tag>` es `nacional` solo cuando hay footprints de todas las regiones del GPKG. Tarda unos 2 min por La Araucanía, así que el país entero será del orden de 30 min; la RAM de la Metropolitana está por vigilar.
+- **Cómo se mide**: la huella es el edificio recortado contra la zona; el n.º de edificios cuenta cada uno una vez, por su punto representativo; las piezas con `riesgo=True` suman a su zona. El coeficiente es huella / área **bruta** de la zona (incluye calles y áreas verdes), por lo que **no es el coeficiente de ocupación de suelo de la OGUC** (que es sobre el predio neto). Sirve para comparar zonas, no para verificar la norma.
+- La Araucanía (GPKG nacional del 29-sep): 297 zonas, 23.142 ha, 278.576 edificios, 26,1 millones de m² de huella, coeficiente global 11,3 %, máximo 70 % (Temuco ZE1) y ninguna zona sobre 100 %. Hay 7 zonas sin edificios, todas agrícolas, de cauce o áreas verdes (Carahue Z-R9 y Z-R10, cauces de Freire y Loncoche, Cajón y Victoria).
+- Temuco: ZH3 33 %, ZHR6 37 %, ZM2 22 %; las extensivas ZE6 y ZHE5, cerca de 1 %.
+- Pendiente: la capa aún **no está en el HTML del mapa** (hoy tiene una sola fuente PMTiles). Para eso hay que decidir un selector de capas o un PMTiles aparte. Tampoco se probó la corrida nacional.
 
 ## Entorno
 
