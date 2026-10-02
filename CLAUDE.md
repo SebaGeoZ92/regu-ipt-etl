@@ -171,21 +171,21 @@ Traspaso S1 (`79adca0`): La Araucanía tiene **1.091.394 edificios, 117,7 MB y t
 - El bbox trajo 1.366.800 edificios: 260.067 eran de regiones vecinas y 15.339 quedaban fuera de la DPA; ninguno de los dos se guarda.
 - Estimación nacional: unos 1,1 a 1,5 GB y entre 40 y 60 min, con la Metropolitana como la más pesada (vigilar la RAM).
 - Para seguir: Seba corre S2 a S4 con el comando de `docs/FOOTPRINTS_NACIONAL.md`, usando `--release 2026-09-23.1` para que todo el país quede en el mismo release.
-Disco: el 2-oct-2026 quedaban **7,3 GB libres** en C:. Revisar con `Get-PSDrive C` antes de S2, porque el total nacional se estima en unos pocos GB.
+Disco: desde el 2-oct-2026 los footprints viven en `D:\regu-data\footprints` (unos 207 GB libres); `footprints estado` informa la carpeta y el disco libre.
 
 ## Entorno
 
 - Windows + PowerShell, venv en `.venv` (`.venv\Scripts\activate`), Python 3.12, pandas 3.x, geopandas 1.1.
 - **Dónde viven los datos** (2-oct-2026): las rutas salen de `paths` en `config.yaml` (por defecto `data/...`, relativas al repo, así que un clon sin D: funciona igual). `config.local.yaml` (no versionado) sobrescribe solo `paths`; el modelo está en `config.local.yaml.ejemplo` (`D:/regu-data/{raw,out,footprints,export,demanda}`). En el código, usar siempre `run.ruta(cfg, "<clave>")`, nunca `ROOT / cfg["paths"][...]`.
-  - Estado: **los datos siguen en C:** (`data/raw` 0,65 GB, `data/out` 3,2 GB, `data/base/footprints` 0,14 GB, `data/export` 0,42 GB). La migración a D: está bloqueada porque el usuario no tiene permiso de escritura en `D:\` (solo Administradores). Cuando exista `D:\regu-data` con permiso de modificación: copiar con robocopy, comparar número de archivos y bytes, correr el test y una ficha, `footprints estado`, activar `config.local.yaml` y recién entonces borrar de C:.
-  - `data/base/comunas_bcn` y `data/base/normas_zona.csv` quedan en el repo (livianos).
+  - En el PC de Seba **los datos viven en `D:\regu-data\`** (`raw`, `out`, `footprints`, `export`, `demanda`; unos 4,8 GB), con `config.local.yaml` activo. Migración del 2-oct-2026: copia con robocopy, 634 archivos con igual número, bytes y hash MD5; test, ficha de Temuco y `footprints estado` verificados con las carpetas originales ocultas, y después eliminadas del disco C. Cuando este archivo dice `data/out`, `data/raw`, etc., en este PC significa la carpeta equivalente en D:.
+  - En el repo (livianos) quedan solo `data/base/comunas_bcn` y `data/base/comunas_final.zip`; `paths.comunas` no se movió.
 - Tests: `python tests\test_sintetico.py`
 - Todo trabajo ocurre en el PC personal de Seba, fuera de su empleo. No usar datos ni recursos institucionales.
 
 ## Convenciones
 
 - Código y comentarios en español.
-- **Avance de procesos largos**: `build`, `download`, `discover` y cualquier script largo escriben su avance en `data/out/progreso.log`, una línea por comuna o capa con el formato `HH:MM:SS <región> <comuna> i/total` (para capas: `HH:MM:SS <servicio> <capa> i/total`), y además la imprimen con `flush=True`. Se usa `etl/progreso.py`: `progreso.iniciar(path)` al partir, que reescribe el archivo, y `progreso.paso(grupo, nombre, i, total)` por unidad. Los scripts sueltos (en el scratchpad, por ejemplo) siguen la misma convención. Para seguirlo en PowerShell 5.1: `Get-Content data\out\progreso.log -Wait -Tail 5 -Encoding utf8` (sin `-Encoding utf8` las tildes salen como "RegiÃ³n").
+- **Avance de procesos largos**: `build`, `download`, `discover` y cualquier script largo escriben su avance en `<paths.out>/progreso.log` (en este PC, `D:\regu-data\out\progreso.log`), una línea por comuna o capa con el formato `HH:MM:SS <región> <comuna> i/total` (para capas: `HH:MM:SS <servicio> <capa> i/total`), y además la imprimen con `flush=True`. Se usa `etl/progreso.py`: `progreso.iniciar(path)` al partir, que reescribe el archivo, y `progreso.paso(grupo, nombre, i, total)` por unidad. Los scripts sueltos (en el scratchpad, por ejemplo) siguen la misma convención. Para seguirlo en PowerShell 5.1: `Get-Content D:\regu-data\out\progreso.log -Wait -Tail 5 -Encoding utf8` (sin `-Encoding utf8` las tildes salen como "RegiÃ³n").
 - No hacer commit de `data/` (caché y salidas pesan GB). Las muestras versionables van en `samples/` y se generan con `python run.py muestra`, siempre sin datos de terceros (Overture, catastral.cl) ni de usuarios.
 - **Repo remoto** (privado, 30-sep-2026): `origin` = https://github.com/SebaGeoZ92/regu-ipt-etl.git. Claude Code trabaja en `master` (`etl/`, `run.py`, `tests/`, config, `fuentes/`, `docs/`). **Codex** trabaja solo en la rama `codex/sig-layouts`, en `sig/` y `samples/`, según `AGENTS.md` y `docs/SIG_LAYOUTS.md`. No tocar `sig/` salvo para integrar un PR revisado por Seba.
 - Cualquier cambio en `classify.py` debe mantener cobertura del 100% y cero traslapes en el test.
