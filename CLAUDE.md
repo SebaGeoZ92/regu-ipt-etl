@@ -176,11 +176,21 @@ Disco: desde el 2-oct-2026 los footprints viven en `D:\regu-data\footprints` (un
 
 ### Volúmenes (`docs/VOLUMENES.md`)
 
-**`docs/VOLUMENES.md` no estaba en el repo ni en Downloads (2-oct-2026)**, así que solo está registrada la etapa 1, que Seba describió en el pedido. Cuando llegue el archivo, agregar aquí sus demás etapas. No se inventaron.
+Cuatro volúmenes por predio (V_max, V_opt, V_calc, V_real), sus índices (IOV, remanente, eficiencia, brecha de registro) y la confianza de cada valor: ver `docs/VOLUMENES.md`. Reglas duras de ese documento, que valen para todas las etapas:
+- Las normas no se inventan: al público solo se muestran las `VALIDADO` por el arquitecto.
+- La brecha de registro nunca se publica por predio ni se usa para prospección; solo la ve quien consulta su propio predio, o en agregados.
+- Cada número lleva su `fuente` y su `confianza`, y siempre el aviso de información referencial.
+- `V_max ≥ V_opt`: si da lo contrario, es un error de datos y se marca.
 
 | # | Tarea | Responsable | Requiere red | Estado |
 |---|---|---|---|---|
 | V1 | Ocupación real del suelo por zona PRC, a nivel nacional con los footprints de `paths.footprints`: CSV por zona (ipt, zona, ha, m² de huella, coeficiente de ocupación existente, n.º de edificios) y capa para el mapa coloreada por coeficiente | Claude Code | No | **hecho para La Araucanía** (`efe37e0`, `215e42e`); el nacional espera S2 a S4 |
+| V2 | V_calc por predio donde haya datos SII (piloto Temuco con catastral.cl, cuidando la cuota de 100/día y 20/min; nunca escribir la clave en el repo ni en logs). Pisos = superficie construida SII / área de huella, o `num_floors` de Overture | Claude Code | Sí | pendiente |
+| V3 | V_max y V_opt en la zona piloto, cuando Mario llene `normas_zona.csv` (V_opt de la fase 1 sin rasantes, declarado; rasantes en la fase 2 con geometría 3D) | Claude Code | No | pendiente: espera las normas de Mario |
+| V4 | V_real con datos Z: primero `height` de Overture donde exista; luego nDSM (LiDAR o fotogrametría), revisando disponibilidad para Temuco y conectando con Living DEM | Claude Code | Sí | pendiente |
+| V5 | Salidas: CSV por predio (`rol, cut, zona, v_max, v_opt, v_calc, v_real, iov, remanente_m2, eficiencia, brecha_registro` más `fuente_*` y `confianza_*`), agregados por manzana, zona y comuna, y mapa con color por IOV y extrusión 3D | Claude Code | No | pendiente: después de V2 y V3 |
+
+Nota: V1 ya produce el coeficiente existente por zona; se compara con el normativo cuando haya tabla de normas validada.
 
 Traspaso V1: `etl/ocupacion.py` y `python run.py ocupacion [--region X] [--gpkg G]`, con test `test_ocupacion_sintetico`.
 - Procesa las regiones con manifiesto de footprints `completa: true` y escribe en `paths.out`: `ocupacion_zonas_<tag>_<fecha>.csv` (utf-8-sig), `ocupacion_<tag>_<fecha>.gpkg` (capa `ocupacion_zonas`, con `tramo` y `color`) y `ocupacion_qa_<tag>_<fecha>.json` (con la leyenda). `<tag>` es `nacional` solo cuando hay footprints de todas las regiones del GPKG. Tarda unos 2 min por La Araucanía, así que el país entero será del orden de 30 min; la RAM de la Metropolitana está por vigilar.
