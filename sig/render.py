@@ -16,8 +16,10 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from shapely.geometry import box
 from shapely import make_valid
+from shapely.ops import transform as shp_transform
 
 from etl.mapa import COLORES
+from sig.tipografia import registrar_verdana
 
 ROOT = Path(__file__).resolve().parents[1]
 SIG = Path(__file__).resolve().parent
@@ -64,6 +66,59 @@ def encuadre(bounds, rect, margen=1.10):
     return lambda u,v: (x+w/2+(u-cx)*factor, y+h/2+(v-cy)*factor), factor
 
 
+# Serie de escalas estándar. Incluye 3 y 4 (1:300.000, 1:400.000): sin ellas, comunas de 250-400k saltaban a
+# 1:500.000 y ocupaban 27-39 % del marco (Nueva Imperial, Vilcún, Lautaro).
+SERIE_ESCALAS = (1, 1.5, 2, 2.5, 3, 4, 5, 7.5)
+DISTANCIAS_BARRA_M = (50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000)
+
+
+def escala_estandar(denominador):
+    """Menor escala de la serie 1/1,5/2/2,5/3/4/5/7,5 × 10^n que es >= al denominador del encuadre (así el mapa
+    cabe)."""
+    base = 10 ** math.floor(math.log10(denominador))
+    for f in SERIE_ESCALAS + (10,):
+        if f * base >= denominador - 1e-6:
+            return int(round(f * base))
+
+
+def barra_escala(denominador, min_mm=25, max_mm=60):
+    """Distancia redonda de la barra (m) cuyo largo impreso queda entre min_mm y max_mm, lo más larga posible."""
+    candidatas = [d for d in DISTANCIAS_BARRA_M if min_mm <= d * 1000 / denominador <= max_mm]
+    return max(candidatas) if candidatas else min(DISTANCIAS_BARRA_M, key=lambda d: abs(d * 1000 / denominador - max_mm))
+
+
+def etiqueta_distancia(m):
+    return f'{m/1000:g} km'.replace('.', ',') if m >= 1000 else f'{m:g} m'
+
+
+def encuadre_a_escala(bounds, rect, denominador):
+    """Como encuadre(), pero con una escala fija: 1 m del terreno = 1000/denominador mm en el papel."""
+    x, y, w, h = [v * mm for v in rect]
+    a, b, d, e = bounds
+    factor = 1000 * mm / denominador
+    cx, cy = (a+d)/2, (b+e)/2
+    return lambda u,v: (x+w/2+(u-cx)*factor, y+h/2+(v-cy)*factor), factor
+
+
+def caja_escala(sx, sy, largo):
+    """Recuadro blanco de la escala (mm), el mismo que se dibuja: origen (sx-3, sy-8), (largo+24) × 22 mm."""
+    return box(sx-3, sy-8, sx-3+largo+24, sy+14)
+
+
+def ubicar_escala(preferida, largo, rect, limite, transform, margen=7):
+    """Posición (sx, sy) de la escala: la de la plantilla si no tapa la comuna; si no, la esquina del marco
+    (inferior izquierda, inferior derecha, superior izquierda; la superior derecha es del norte) que menos la tape."""
+    x, y, w, h = rect
+    comuna = shp_transform(lambda u, v, z=None: tuple(t / mm for t in transform(u, v)), limite)
+    ancho, alto = largo + 24, 22
+    candidatas = [tuple(preferida),
+                  (x + margen + 3, y + margen + 8),
+                  (x + w - margen - ancho + 3, y + margen + 8),
+                  (x + margen + 3, y + h - margen - alto + 8)]
+    return min(candidatas, key=lambda p: (round(caja_escala(*p, largo).intersection(comuna).area, 1),
+                                          candidatas.index(p)))
+
+
 def textura(c, p, rect, patron, riesgo=False):
     if patron == 'liso':
         return
@@ -88,7 +143,7 @@ def textura(c, p, rect, patron, riesgo=False):
 
 def texto(c, x, y, s, size=8, bold=False):
     c.setFillColor(HexColor('#263e36'))
-    c.setFont('Helvetica-Bold' if bold else 'Helvetica',size)
+    c.setFont('Verdana-Bold' if bold else 'Verdana',size)
     c.drawString(x*mm,y*mm,str(s))
 
 
@@ -96,11 +151,31 @@ def parrafo(c, x, y, contenido, ancho, size=8):
     linea = ''
     for palabra in str(contenido).split():
         prueba = (linea+' '+palabra).strip()
-        if stringWidth(prueba,'Helvetica',size) > ancho*mm:
+        if stringWidth(prueba,'Verdana',size) > ancho*mm:
             texto(c,x,y,linea,size); y -= size*1.35/mm; linea=palabra
         else: linea=prueba
     if linea: texto(c,x,y,linea,size); y -= size*1.35/mm
     return y
+
+
+def region_corta(region):
+    """'Región de La Araucanía' -> 'La Araucanía'; 'Región del Maule' -> 'Maule'."""
+    for pref in ('Región de ', 'Región del ', 'Region de ', 'Region del '):
+        if region.startswith(pref):
+            return region[len(pref):]
+    return region
+
+
+def rotulo_minimapa(c, nombre, limite, tr, rect):
+    """Nombre de la comuna junto a su silueta en el minimapa (a la derecha o, si no cabe, a la izquierda),
+    siempre dentro del marco del minimapa."""
+    x, y, w, h = [v*mm for v in rect]
+    a, b, d, e = limite.bounds
+    (x0, y0), (x1, y1) = tr(a, b), tr(d, e)
+    ancho = stringWidth(nombre, 'Verdana-Bold', 8)
+    ty = min(max((y0 + y1) / 2 - 1*mm, y + 1*mm), y + h - 3*mm)
+    tx = x1 + 1.5*mm if x1 + 1.5*mm + ancho <= x + w else max(x0 - 1.5*mm - ancho, x)
+    texto(c, tx/mm, ty/mm, nombre, 8, True)
 
 
 @lru_cache(maxsize=4)
@@ -110,10 +185,12 @@ def regional(ruta):
 
 
 def generar(cut, salida, gpkg, pmtiles, cfg):
+    registrar_verdana()
     comunas = gpd.read_file(gpkg,layer='comunas').to_crs(CRS)
     seleccion = comunas[comunas.cut.astype(str).str.zfill(5)==cut]
     if len(seleccion)!=1: raise ValueError(f'CUT {cut}: se esperaba una comuna, hay {len(seleccion)}')
     nombre = seleccion.iloc[0].comuna
+    region = str(seleccion.iloc[0].get('region') or '').strip()
     limite = make_valid(seleccion.geometry.iloc[0])
     capa = gpd.read_file(gpkg,layer='capa_ipt')
     capa = capa[capa.cut.astype(str).str.zfill(5)==cut].copy()
@@ -134,11 +211,14 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     c.setFillColor(HexColor('#fafbf8')); c.rect(0,0,420*mm,297*mm,fill=1,stroke=0)
     tx,ty=cfg['titulo_mm']
     texto(c,tx,ty,cfg['titulo'],23,True)
-    texto(c,tx,ty-9,f'Comuna de {nombre} · Región de La Araucanía · CUT {cut}',12)
-    texto(c,350,ty,'LÁMINA COMUNAL / 01',9,True)
+    texto(c,tx,ty-9,' · '.join(x for x in (f'Comuna de {nombre}', region, f'CUT {cut}') if x),12)
+    cx_,cy_=cfg.get('codigo_mm',[350,ty])
+    texto(c,cx_,cy_,cfg.get('codigo','LÁMINA COMUNAL / 01'),9,True)
     rect=cfg['mapa_mm']; x,y,w,h=rect
-    transform,factor=encuadre(limite.bounds,rect,1.16)
-    escala=1000*mm/factor
+    # Escala estándar (redondeada hacia arriba desde el encuadre, para que la comuna siga cabiendo en el marco)
+    _,factor_ajuste=encuadre(limite.bounds,rect,1.16)
+    escala=escala_estandar(1000*mm/factor_ajuste)
+    transform,factor=encuadre_a_escala(limite.bounds,rect,escala)
     c.saveState()
     marco=c.beginPath(); marco.rect(x*mm,y*mm,w*mm,h*mm)
     c.clipPath(marco,stroke=0,fill=0)
@@ -162,7 +242,7 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     for fila in comunas.itertuples():
         if str(fila.cut)==cut: continue
         px,py=transform(*fila.geometry.representative_point().coords[0])
-        ancho=stringWidth(fila.comuna,'Helvetica',8)
+        ancho=stringWidth(fila.comuna,'Verdana',8)
         r=box(px-ancho/2-3,py-3,px+ancho/2+3,py+10)
         if box(x*mm+5,(y+22)*mm,(x+w)*mm-5,(y+h-22)*mm).contains(r) and not any(r.intersects(o) for o in ocupadas):
             texto(c,(px-ancho/2)/mm,py/mm,fila.comuna,8); ocupadas.append(r)
@@ -176,13 +256,15 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
     c.setStrokeColor(HexColor('#263e36')); c.setLineWidth(1); c.line(0,-8*mm,0,4*mm)
     p=c.beginPath(); p.moveTo(0,5*mm); p.lineTo(-1.5*mm,1*mm); p.lineTo(1.5*mm,1*mm); p.close()
     c.setFillColor(HexColor('#263e36')); c.drawPath(p,fill=1,stroke=0); c.restoreState(); texto(c,nx-1,ny+8,'N',10,True)
-    sx,sy=cfg['escala_mm']; distancia=5000; largo=distancia*factor/mm
+    distancia=barra_escala(escala); largo=distancia*factor/mm
+    sx,sy=ubicar_escala(cfg['escala_mm'],largo,rect,limite,transform)
     c.setFillColor(HexColor('#fafbf8')); c.rect((sx-3)*mm,(sy-8)*mm,(largo+24)*mm,22*mm,fill=1,stroke=0)
     for i in range(5):
         c.setFillColor(HexColor('#263e36' if i%2==0 else '#ffffff'))
         c.setStrokeColor(HexColor('#263e36')); c.setLineWidth(.5)
         c.rect((sx+i*largo/5)*mm,sy*mm,largo/5*mm,2*mm,fill=1,stroke=1)
-    texto(c,sx,sy-4,'0',8); texto(c,sx+largo-3,sy-4,'5 km',8)
+    etq=etiqueta_distancia(distancia)
+    texto(c,sx,sy-4,'0',8); texto(c,sx+largo-stringWidth(etq,'Verdana',8)/mm/2,sy-4,etq,8)
     texto(c,sx,sy+6,f'1:{escala:,.0f}'.replace(',','.')+' · imprimir al 100 %',9,True)
     # Leyenda y estadísticas de la superficie del producto, sin doble conteo.
     px,py,pw,ph=cfg['panel_mm']; yy=py+ph-5
@@ -204,14 +286,15 @@ def generar(cut, salida, gpkg, pmtiles, cfg):
         yy=parrafo(c,px,yy,f'{fila.ipt_norma or "Sin decreto en la muestra"} · {fila.ipt_fecha or "Sin fecha"}',pw,8)
         if fila.ipt_ultmod: yy=parrafo(c,px,yy,f'Última modificación: {fila.ipt_ultmod}',pw,8)
         yy-=3
-    if yy < 119: raise ValueError('Instrumentos exceden el panel: ajustar plantilla; no se recorta texto')
     mx,my,mw,mh=cfg['minimapa_mm']
-    texto(c,px,my+mh+6,'UBICACIÓN · LA ARAUCANÍA',9,True)
+    # El panel termina donde empieza el título del minimapa (my+mh+6 mm) más un respiro de 7 mm
+    if yy < my+mh+13: raise ValueError('Instrumentos exceden el panel: ajustar plantilla; no se recorta texto')
+    texto(c,px,my+mh+6,'UBICACIÓN · '+region_corta(region).upper() if region else 'UBICACIÓN',9,True)
     reg=regional(str(pmtiles)); tr,_=encuadre(reg.bounds,[mx,my,mw,mh])
     c.setFillColor(HexColor('#dce1d7')); c.drawPath(trazado(c,reg,tr),fill=1,stroke=0,fillMode=0)
     c.setFillColor(HexColor('#b0442b')); c.setStrokeColor(HexColor('#263e36')); c.setLineWidth(.6)
     c.drawPath(trazado(c,limite,tr),fill=1,stroke=1,fillMode=0)
-    texto(c,px+75,my+25,nombre,8,True)
+    rotulo_minimapa(c,nombre,limite,tr,[mx,my,mw,mh])
     texto(c,px,my-3,'Cobertura regional generalizada del PMTiles.',7)
     rx,ry=cfg['rotulo_mm']; sha=hashlib.sha256(Path(gpkg).read_bytes()).hexdigest()[:12]
     texto(c,rx,ry,cfg['proyecto'],10,True)

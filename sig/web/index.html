@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Atlas Normativo · Regu</title>
+  <link rel="stylesheet" href="/vendor/leaflet.css"><link rel="stylesheet" href="/estilos.css">
+  <script src="/vendor/leaflet.js" defer></script><script src="/app.js" defer></script>
+</head>
+<body>
+<header><div><strong>Atlas Normativo</strong><span>Regu · Espacio de trabajo</span></div><a id="pdf" class="boton" href="#">Descargar lámina A3</a></header>
+<main>
+<aside aria-label="Proyecto y capas">
+  <h1>Explorar el territorio</h1><p class="tenue" id="cobertura">Cargando cobertura…</p>
+  <label for="comuna">Comuna</label><select id="comuna" disabled></select>
+  <h2>Capas</h2>
+  <label class="capa"><input type="checkbox" id="capa_ipt" checked> Situación normativa</label>
+  <label class="capa"><input type="checkbox" id="afectaciones" checked> Áreas de riesgo</label>
+  <label class="capa"><input type="checkbox" id="comunas" checked> Límite comunal</label>
+  <h2>Piloto de tres comunas</h2><p id="piloto" class="tenue"></p>
+  <label class="capa" id="control-propuesta" hidden><input type="checkbox" id="propuesta_tolten"> Propuesta PRC Toltén</label>
+  <p id="aviso-propuesta" class="tenue" hidden></p>
+  <h2>Clases presentes</h2><div id="leyenda"></div>
+  <h2>Fuentes</h2><p class="tenue">IDE MINVU · Portal IPT MINVU · BCN</p>
+  <p class="tenue">Haz clic sobre el mapa para consultar el suelo y sus afectaciones.</p>
+  <button id="encuadrar" type="button">Ver toda la comuna</button>
+</aside>
+<section id="mapa" aria-label="Mapa normativo interactivo"></section>
+<aside id="inspector" aria-label="Consulta normativa"><h2>Información del lugar</h2><div id="consulta" aria-live="polite">Selecciona un lugar del mapa.</div></aside>
+</main>
+<footer><span id="estado" role="status">Cargando proyecto…</span><span id="aviso"></span></footer>
+</body></html>

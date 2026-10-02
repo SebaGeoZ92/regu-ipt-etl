@@ -25,6 +25,10 @@ python tests/test_sintetico.py
 - Minimapa: cobertura de todas las clases del PMTiles regional a zoom 6, generalizada 100 m. Se identifica expresamente como cobertura generalizada, no como una nueva delimitación administrativa. Comuna destacada a partir de BCN.
 - Decreto, fecha y última modificación se reproducen tal como aparecen en la muestra del cruce Portal IPT. La tabla no certifica vigencia actual; los metadatos ausentes se indican, incluso cuando la entrada no contiene las columnas opcionales de vigencia o fecha de extracción. R2 no se presenta como instrumento.
 - Solo se rotulan comunas vecinas cuando el texto cabe en el marco sin colisión. No se inventan nombres de localidades ni normas de zona.
+- Escala estándar (Claude Code, 30-sep-2026): el denominador del encuadre se redondea hacia arriba a la serie 1/1,5/2/2,5/3/4/5/7,5 × 10ⁿ (Temuco: 1:150.000), y la barra usa una distancia redonda de 25 a 60 mm impresos.
+- La región del subtítulo y del minimapa sale de la capa `comunas`, y el rótulo del minimapa va junto a la silueta de la comuna, dentro del marco.
+- El recuadro de escala se ubica donde no tapa la comuna: primero la posición de la plantilla y, si no, las esquinas libres del marco. La superior derecha queda para el norte.
+- El código de lámina (`codigo`, `codigo_mm`) viene de la plantilla, y el límite del panel de instrumentos se deriva de la posición del minimapa.
 
 ## Plantilla y comprobación
 
@@ -37,3 +41,32 @@ Pruebas: entrada sin metadatos opcionales, tamaño físico A3, ausencia de imág
 Lote de las siete comunas: 19,69 s en la última verificación del entorno cloud (2026-09-30). El requisito de 32 comunas en menos de cinco minutos queda pendiente de validación con una entrada completa de 32 comunas; no se extrapola como resultado medido.
 
 Las dependencias están aisladas en `sig/requirements.txt`. Las salidas de ejemplo se guardan en `sig/salidas/`; los lotes de trabajo deben ir fuera del repositorio o a `data/`, que ya está ignorado.
+
+## Espacio de trabajo local
+
+```bash
+python -m sig.servidor
+```
+
+Abrir `http://127.0.0.1:8000` en el mismo equipo. Permite elegir comuna, activar capas, consultar un punto y descargar su lámina A3. No requiere Internet al ejecutarse: Leaflet está incluido con su licencia en `web/vendor/`. El mapa usa las geometrías de la muestra, sin mapa base externo.
+
+La exportación conserva la plantilla comunal: no refleja el zoom ni las capas desactivadas en el visor. El proyecto aún no permite importar capas propias, guardar proyectos, seleccionar por atributos ni editar simbología. La [arquitectura y próximos recorridos](ARQUITECTURA.md) separa lo implementado de esas etapas. Reiniciar el servidor si cambian los datos o la plantilla; la caché de lectura y de PDFs dura únicamente la sesión. El servicio escucha solo en el equipo local y no registra el contenido de consultas.
+
+## Verdana
+
+La familia elegida es **Verdana original**, regular y negrita, para toda la lámina. Las medidas y saltos de línea se calculan con esa fuente y el PDF incrusta los subconjuntos utilizados. No se sustituye silenciosamente por Helvetica cuando falta.
+
+El render busca `verdana.ttf` y `verdanab.ttf` (sin distinguir mayúsculas en los nombres de archivo) en la carpeta indicada por `SIG_FUENTES`, o en las ubicaciones habituales de Windows/macOS y `~/.local/share/fonts/verdana` en Linux. En Windows suele bastar la instalación del sistema. Para una carpeta propia, en PowerShell:
+
+```powershell
+$env:SIG_FUENTES = 'C:\MisFuentes\Verdana'
+python -m sig.render --cut 09101 --salida sig/salidas/temuco.pdf
+```
+
+Los archivos originales deben estar instalados con su licencia correspondiente; no se incluyen fuentes ni instaladores en Git. Esta verificación usó Verdana de Microsoft Core Fonts, obtenida del paquete `verdan32.exe` del proyecto Corefonts en SourceForge. Diferentes versiones de Verdana pueden cambiar ligeramente el snapshot; revisar visualmente antes de aceptar una nueva referencia.
+
+La interfaz usa Verdana instalada en el equipo del navegador. Si no existe, el navegador puede usar su sans serif de respaldo; para evaluar la tipografía elegida, instalar Verdana también en ese equipo. No se sirve ni transforma la fuente como webfont.
+
+## Piloto de tres comunas
+
+El piloto ahora contempla **Loncoche, Temuco y Toltén**. El visor muestra qué comunas están disponibles en la entrada; no inventa las ausentes. `python -m sig.piloto` prepara el inventario y permite descargar Overture por CUT con una versión común. La propuesta de PRC de Toltén se puede cargar como escenario independiente con procedencia obligatoria, sin afectar consultas ni PDFs de la base normativa. Datos pendientes, comandos y límites en [PILOTO_TRES_COMUNAS.md](PILOTO_TRES_COMUNAS.md).

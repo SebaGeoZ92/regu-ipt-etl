@@ -22,6 +22,15 @@ el reparto de trabajo entre agentes y las reglas que no se pueden romper.
 | **Claude Code** | `master` | `etl/`, `run.py`, `tests/`, `config.yaml`, `fuentes/`, `legal_refs.json`, `docs/`, `CLAUDE.md`, `AGENTS.md` | `sig/` (salvo para integrar un PR revisado) |
 | **Codex** | `codex/sig-layouts` | **solo** `sig/` y `samples/` | `master`, `etl/` y todo lo demás |
 
+## Traspaso de `codex/sig-layouts` (30-sep-2026)
+
+- Codex se quedó sin cuota. **Claude Code continúa la rama `codex/sig-layouts` desde el commit `2c48a16`**
+  ("sig: respeta metadatos opcionales del contrato y UTF-8"), el último de Codex, ya integrado a `master` por el
+  PR #1. Mientras dure el traspaso, Claude Code trabaja en `sig/` en esta rama, con un commit por avance que
+  funcione (tests de `sig/` y del ETL en verde).
+- **Codex: antes de retomar, haz `git fetch origin` y `git pull origin codex/sig-layouts`**, y lee el estado en
+  `sig/README.md` y en `CLAUDE.md`. No reescribas la historia de la rama (nada de `push --force` ni rebase).
+
 ## Codex: layouts SIG
 
 - Trabaja **solo** en la rama `codex/sig-layouts`, creada desde `master`. No hagas push a `master` ni lo rebasees.

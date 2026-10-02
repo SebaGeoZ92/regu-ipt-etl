@@ -140,7 +140,22 @@ Si se migra, basta con cambiar `paths.comunas` y los tres `field_*` en config. A
      - Que Mario elija la zona; luego `run.py volumen plantilla --ipt Temuco --zona <Z>`.
      - La ruta del GeoParquet catastral de GEOSAL para `--predios`; si no existe, usar la API de catastral.cl con `CATASTRAL_API_KEY`.
      - Los pasos siguientes (cálculo, salidas, mapa y ficha) solo con normas llenadas por el arquitecto.
-9. [ ] Cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
+9. [ ] **SIG propio · layouts** (`docs/SIG_LAYOUTS.md`, rama `codex/sig-layouts`, carpeta `sig/`).
+   - Codex hizo la primera versión de la lámina comunal (commits `e7341d5` y `2c48a16`, mergeados a `master` por el PR #1): ReportLab con PDF vectorial en A3 horizontal, plantilla JSON validada, pytest en `sig/tests` y dependencias en `sig/requirements.txt`.
+   - Codex se quedó sin cuota el 30-sep-2026 y **Claude Code sigue la rama desde `2c48a16`**. Avances de Claude Code:
+     - `d57a9f0`: región y rótulo del minimapa desde los datos.
+     - `44f4a52`: escala estándar (Temuco 1:150.000) y barra redonda.
+     - `a25ec90`: código de lámina y límite del panel desde la plantilla.
+     - `346e1b1`: la escala no tapa la comuna.
+   - Estado: 9 tests de `sig/` en verde, y `python tests\test_sintetico.py` en verde.
+   - Uso: `python -m sig.render --cut 09101 --salida sig/salidas/temuco.pdf` y `python -m pytest sig/tests -q`.
+   - Pendiente de la lámina:
+     - Lote medido (30-sep-2026): las 7 comunas de la muestra tardan 14,8 s, unos 2 s por lámina. Se estima alrededor de 1 minuto para 32, pero falta medirlo con un GPKG de la región completa.
+     - Otros formatos: solo existe A3 horizontal; faltan A4 y A3 vertical.
+     - Rótulos de comunas vecinas: en Temuco no aparece ninguno.
+     - PR de la rama a `master`.
+   - Pendiente después: la ficha predial en A4, con un polígono sintético.
+10. [ ] Cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
 
 ## Entorno
 
