@@ -14,6 +14,8 @@ Uso:
   python run.py vigencia [--region X] [--refresh]                   # cruce Portal IPT ↔ servidor (brechas)
   python run.py fuentes estado|validar                              # fuentes bajo demanda (docs/FUENTES_BAJO_DEMANDA.md)
   python run.py volumen footprints|candidatas --ipt "Temuco" --region ARAUCANIA   # piloto de volumen, paso 0
+  python run.py footprints descargar --region "ARICA|TARAPACA"      # footprints de Overture por región (reanudable)
+  python run.py footprints estado                                   # región | edificios | MB | release | fecha | completa
   python run.py volumen plantilla --ipt "Temuco" --zona "ZH-1"      # fila vacía en data/base/normas_zona.csv
 """
 from __future__ import annotations
@@ -485,6 +487,34 @@ Dirección de Obras Municipales (OGUC art. 1.4.4). `legal_refs.json` está en BO
 """
 
 
+def cmd_footprints(cfg, args):
+    """Footprints nacionales de Overture por región (docs/FOOTPRINTS_NACIONAL.md): descargar | estado."""
+    from etl import footprints as F
+    accion = args.archivo or "estado"
+    dir_fp = ROOT / "data" / "base" / "footprints"
+    if accion == "estado":
+        t = F.estado(dir_fp)
+        with pd.option_context("display.width", 200):
+            print(t.to_string(index=False) if len(t) else "Sin manifiestos todavía en data/base/footprints/")
+        libre = __import__("shutil").disk_usage(ROOT).free / 1e9
+        print(f"\nTotal: {int(t.edificios.fillna(0).sum()) if len(t) else 0} edificios · "
+              f"{t.MB.fillna(0).sum() if len(t) else 0:.1f} MB · disco libre {libre:.1f} GB · {F.ATRIBUCION}")
+        return
+    if accion == "descargar":
+        if not args.region:
+            sys.exit('Uso: python run.py footprints descargar --region "ARAUCANIA" (regex: "ARICA|TARAPACA")')
+        c = cfg["comunas"]
+        comunas = cargar_comunas(cfg, None)
+        res = F.descargar_regiones(args.region, comunas, c["field_cut"], c["field_nombre"], c["field_region"], dir_fp,
+                                   release=args.release, refresh=args.refresh, conservar_crudo=args.conservar_crudo,
+                                   dir_manifiestos_repo=ROOT / "docs" / "footprints")
+        for m in res:
+            log.info("%s: %s edificios · %s MB · %s s%s", m["region"], m["n_edificios"], m["mb"], m.get("duracion_s"),
+                     " (ya estaba completa)" if m.get("saltada") else "")
+        return
+    sys.exit("Uso: python run.py footprints descargar --region X | estado")
+
+
 def cmd_importar_revision(cfg, args):
     if not args.archivo:
         sys.exit("Uso: python run.py importar-revision <csv>")
@@ -498,7 +528,9 @@ def cmd_importar_revision(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
-                                    "mapa", "vigencia", "fuentes", "volumen", "muestra"])
+                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints"])
+    ap.add_argument("--release", help="footprints: release de Overture (por defecto, el último)")
+    ap.add_argument("--conservar-crudo", action="store_true", help="footprints: no borrar el parquet crudo de Overture")
     ap.add_argument("--cut", help="muestra: CUT(s) centrales separados por coma, p.ej. 09101")
     ap.add_argument("--nombre", help="muestra: carpeta en samples/ (por defecto, la comuna central)")
     ap.add_argument("--ipt", help='volumen: nombre del PRC (ipt_nombre), p.ej. "Temuco"')
@@ -520,7 +552,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
     cfg = cargar_cfg()
-    if args.cmd in ("discover", "download", "build", "all"):
+    if args.cmd in ("discover", "download", "build", "all") or (args.cmd == "footprints" and args.archivo == "descargar"):
         # convención: procesos largos dejan su avance en data/out/progreso.log (ver etl/progreso.py)
         progreso.iniciar(ROOT / cfg["paths"]["out"] / "progreso.log")
     if args.cmd in ("discover", "all"):
@@ -545,6 +577,8 @@ def main():
         cmd_volumen(cfg, args)
     if args.cmd == "muestra":
         cmd_muestra(cfg, args)
+    if args.cmd == "footprints":
+        cmd_footprints(cfg, args)
 
 
 if __name__ == "__main__":

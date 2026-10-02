@@ -449,6 +449,73 @@ def test_volumen_paso0():
         assert (df.drop(columns=["ipt_nombre", "zona"]).iloc[0] == "").all()   # normas vacías: no se inventan
 
 
+def test_footprints_sintetico():
+    """Footprints por región (docs/FOOTPRINTS_NACIONAL.md, S0) sin red: recorte contra la DPA, asignación a la
+    comuna de mayor área sin partir, borde regional sin duplicados, columnas mínimas, manifiesto y reanudación."""
+    import pandas as pd
+    from etl import footprints as F
+    comunas = gpd.GeoDataFrame({"cut": ["01001", "01002", "02001"], "nombre": ["Uno", "Dos", "Tres"],
+                                "reg": ["Región Alfa", "Región Alfa", "Región Beta"]},
+                               geometry=[box(-72.10, -38.10, -72.00, -38.00), box(-72.00, -38.10, -71.90, -38.00),
+                                         box(-71.90, -38.10, -71.80, -38.00)], crs=4326)
+    src = lambda d: [{"property": "", "dataset": d, "record_id": "x", "confidence": None}]  # noqa: E731
+    crudo = gpd.GeoDataFrame({
+        "id": ["b1", "b2", "b3", "b4", "b5"],
+        "names": [{"primary": "Nombre que no se toma"}, None, None, None, None],
+        "sources": [src("OpenStreetMap"), src("Microsoft ML Buildings"), src("OpenStreetMap"), src("OpenStreetMap"),
+                    src("OpenStreetMap")],
+        "height": [6.0, None, None, None, None], "num_floors": [2, None, None, None, None],
+        "class": ["house", None, None, None, None], "subtype": ["residential", None, None, None, None],
+        "roof_color": ["red", None, None, None, None]},
+        geometry=[box(-72.05, -38.05, -72.049, -38.049),        # b1: dentro de Uno
+                  box(-72.0003, -38.05, -71.9993, -38.049),     # b2: 30% Uno / 70% Dos -> Dos, sin partir
+                  box(-71.9004, -38.05, -71.8994, -38.049),     # b3: 40% Dos / 60% Tres (Beta) -> no es de Alfa
+                  box(-72.115, -38.05, -72.114, -38.049),       # b4: fuera de la DPA (en el margen del bbox)
+                  shapely.Point(-72.05, -38.06)], crs=4326)    # b5: punto, no es huella
+    llamadas = []
+
+    def falsa(bbox, destino, release):
+        llamadas.append((bbox, release))
+        crudo.to_parquet(destino, index=False)
+
+    with tempfile.TemporaryDirectory() as d:
+        dfp, repo = Path(d) / "footprints", Path(d) / "docs_footprints"
+        kw = dict(descargar=falsa, dir_manifiestos_repo=repo)
+        assert F.regiones_que_calzan(["Región Alfa", "Región Beta"], "alfa|GAMMA") == ["Región Alfa"]
+        m = F.descargar_regiones("ALFA", comunas, "cut", "nombre", "reg", dfp, release="2026-09-23.1", **kw)[0]
+        assert len(llamadas) == 1 and llamadas[0][0][0] == -72.12   # bbox de Alfa con margen
+        assert m["completa"] and m["n_edificios"] == 2 and m["fuera_de_la_dpa"] == 1 and m["de_otras_regiones"] == 1
+        assert {c["cut"]: c["n"] for c in m["comunas"]} == {"01001": 1, "01002": 1}
+        g = gpd.read_parquet(dfp / "region_alfa.parquet")
+        assert list(g.columns) == F.COLUMNAS                     # sin names ni atributos de techo/fachada
+        b2 = g.set_index("id").loc["b2"]
+        assert b2.cut == "01002" and b2.fuente == "Microsoft ML Buildings"
+        completa = gpd.GeoSeries([box(-72.0003, -38.05, -71.9993, -38.049)], crs=4326).to_crs(F.CRS_AREA).area[0]
+        assert abs(b2.area_m2 - completa) < 1                     # el edificio no se parte
+        b1 = g.set_index("id").loc["b1"]
+        assert (b1.height, b1.num_floors, b1["class"], b1.fuente) == (6.0, 2, "house", "OpenStreetMap")
+        assert not (dfp / "_crudo" / "region_alfa_2026-09-23.1.parquet").exists()   # crudo borrado
+        assert json.loads((repo / "region_alfa.manifest.json").read_text(encoding="utf-8"))["n_edificios"] == 2
+        # Reanudable: completa con el mismo release -> se salta; --refresh o release nuevo -> se vuelve a pedir
+        assert F.descargar_regiones("ALFA", comunas, "cut", "nombre", "reg", dfp, release="2026-09-23.1", **kw)[0]["saltada"]
+        assert len(llamadas) == 1
+        F.descargar_regiones("ALFA", comunas, "cut", "nombre", "reg", dfp, release="2026-10-21.0", **kw)
+        assert len(llamadas) == 2
+        # Corte a mitad: manifiesto con completa=false -> se rehace
+        man = json.loads((dfp / "region_alfa.manifest.json").read_text(encoding="utf-8")) | {"completa": False}
+        (dfp / "region_alfa.manifest.json").write_text(json.dumps(man), encoding="utf-8")
+        F.descargar_regiones("ALFA", comunas, "cut", "nombre", "reg", dfp, release="2026-10-21.0", **kw)
+        assert len(llamadas) == 3
+        e = F.estado(dfp)
+        assert e.to_dict("records") == [{"region": "Región Alfa", "edificios": 2, "MB": e.MB[0],
+                                         "release": "2026-10-21.0", "fecha": e.fecha[0], "completa": True}]
+        # Beta no duplica el edificio de borde de Alfa (y viceversa)
+        mb = F.descargar_regiones("BETA", comunas, "cut", "nombre", "reg", dfp, release="2026-10-21.0", **kw)[0]
+        ids_b = set(gpd.read_parquet(dfp / "region_beta.parquet").id)
+        assert ids_b == {"b3"} and mb["n_edificios"] == 1
+        assert not ids_b & set(gpd.read_parquet(dfp / "region_alfa.parquet").id)
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -520,6 +587,7 @@ if __name__ == "__main__":
     test_vigencia()
     test_fuentes_contratos()
     test_volumen_paso0()
+    test_footprints_sintetico()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
