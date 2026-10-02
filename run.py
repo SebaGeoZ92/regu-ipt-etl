@@ -393,6 +393,57 @@ def cmd_fuentes(cfg, args):
     sys.exit("Uso: python run.py fuentes estado|validar")
 
 
+def cmd_ocupacion(cfg, args):
+    """Etapa 1 de VOLÚMENES: ocupación real del suelo por zona de PRC (huellas de Overture en paths.footprints).
+
+    Procesa las regiones con descarga completa de footprints (`--region` filtra) y escribe en paths.out:
+    ocupacion_zonas_<tag>_<fecha>.csv, ocupacion_<tag>_<fecha>.gpkg (capa `ocupacion_zonas` coloreada) y su QA en JSON.
+    """
+    import datetime as dt
+    from etl import ocupacion as O
+    from etl.ficha import ultimo_gpkg
+    out = ruta(cfg, "out")
+    gpkg = Path(args.gpkg) if args.gpkg else ultimo_gpkg(out)
+    if not gpkg or not gpkg.exists():
+        sys.exit("No hay GPKG de build (usa --gpkg)")
+    disponibles = O.regiones_con_footprints(ruta(cfg, "footprints"))
+    if args.region:
+        disponibles = {r: p for r, p in disponibles.items() if re.search(args.region, norm_txt(r), re.I)}
+    if not disponibles:
+        sys.exit("Sin footprints completos para esa selección: corre `python run.py footprints descargar --region X`")
+    crs = cfg["crs"]["area"]
+    partes, capas = [], []
+    for i, (reg, pq) in enumerate(sorted(disponibles.items()), 1):
+        progreso.paso("ocupacion", reg, i, len(disponibles))
+        capa = gpd.read_file(gpkg, layer="capa_ipt", where=f"fuente = 'PRC' AND region = '{reg.replace(chr(39), chr(39) * 2)}'")
+        if capa.empty:
+            log.warning("%s: sin piezas PRC en %s", reg, gpkg.name)
+            continue
+        edif = gpd.read_parquet(pq, columns=["id", "geometry"])
+        tabla = O.calcular(capa, edif, crs)
+        partes.append(tabla)
+        capas.append(O.capa_mapa(capa, tabla, cfg["crs"]["salida"]))
+        log.info("%s: %d zonas, %d edificios, %.1f ha de PRC", reg, len(tabla), tabla.n_edificios.sum(), tabla.ha.sum())
+    if not partes:
+        sys.exit("Ninguna región con piezas PRC")
+    tabla = O.combinar(partes)
+    mapa = gpd.GeoDataFrame(pd.concat(capas, ignore_index=True), geometry="geometry", crs=cfg["crs"]["salida"])
+    todas = gpd.read_file(gpkg, layer="capa_ipt", columns=["region"], ignore_geometry=True)["region"].dropna().unique()
+    tag = "nacional" if set(todas) <= set(disponibles) else (
+        norm_txt(next(iter(disponibles))).lower().replace(" ", "_") if len(disponibles) == 1 else "parcial")
+    fecha = dt.date.today().strftime("%Y%m%d")
+    csv = out / f"ocupacion_zonas_{tag}_{fecha}.csv"
+    O.formato_csv(tabla).to_csv(csv, index=False, encoding="utf-8-sig")
+    gp = out / f"ocupacion_{tag}_{fecha}.gpkg"
+    gp.unlink(missing_ok=True)
+    mapa.to_file(gp, layer="ocupacion_zonas", driver="GPKG")
+    qa = {**O.qa(tabla), "regiones": sorted(disponibles), "gpkg_base": gpkg.name,
+          "leyenda": [{"tramo": e, "color": c} for _, e, c in O.TRAMOS] + [{"tramo": O.SIN_DATOS[0], "color": O.SIN_DATOS[1]}]}
+    (out / f"ocupacion_qa_{tag}_{fecha}.json").write_text(json.dumps(qa, ensure_ascii=False, indent=2), encoding="utf-8")
+    log.info("CSV: %s · capa: %s", csv, gp)
+    print(json.dumps({k: v for k, v in qa.items() if k != "leyenda"}, ensure_ascii=False, indent=2))
+
+
 def cmd_volumen(cfg, args):
     """Piloto de volumen (docs/VOLUMEN_PILOTO.md), paso 0: candidatas | footprints | plantilla."""
     from etl import volumen as V
@@ -540,7 +591,7 @@ def cmd_importar_revision(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
-                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints"])
+                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints", "ocupacion"])
     ap.add_argument("--release", help="footprints: release de Overture (por defecto, el último)")
     ap.add_argument("--conservar-crudo", action="store_true", help="footprints: no borrar el parquet crudo de Overture")
     ap.add_argument("--cut", help="muestra: CUT(s) centrales separados por coma, p.ej. 09101")
@@ -564,7 +615,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
     cfg = cargar_cfg()
-    if args.cmd in ("discover", "download", "build", "all") or (args.cmd == "footprints" and args.archivo == "descargar"):
+    if args.cmd in ("discover", "download", "build", "all") or args.cmd == "ocupacion" or (args.cmd == "footprints" and args.archivo == "descargar"):
         # convención: procesos largos dejan su avance en data/out/progreso.log (ver etl/progreso.py)
         progreso.iniciar(ruta(cfg, "out") / "progreso.log")
     if args.cmd in ("discover", "all"):
@@ -591,6 +642,8 @@ def main():
         cmd_muestra(cfg, args)
     if args.cmd == "footprints":
         cmd_footprints(cfg, args)
+    if args.cmd == "ocupacion":
+        cmd_ocupacion(cfg, args)
 
 
 if __name__ == "__main__":
