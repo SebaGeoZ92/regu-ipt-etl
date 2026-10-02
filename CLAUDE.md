@@ -142,6 +142,29 @@ Si se migra, basta con cambiar `paths.comunas` y los tres `field_*` en config. A
      - Los pasos siguientes (cálculo, salidas, mapa y ficha) solo con normas llenadas por el arquitecto.
 9. [ ] Cruce con predios SII (proyecto GEOSAL de Seba, GeoParquet catastral) → endpoint pre-CIP (FastAPI + PostGIS).
 
+## Backlog
+
+Tareas compartidas entre agentes. Protocolo en `AGENTS.md`: marcar `en curso (<agente>, <fecha>)` con commit antes de
+empezar, no tomar lo que esté en curso por otro y, al terminar, `hecho (<commit>)` más una línea de traspaso. Codex
+no tiene red: solo toma tareas con "Requiere red: No".
+
+### Footprints nacionales (`docs/FOOTPRINTS_NACIONAL.md`)
+
+Huellas de Overture (ODbL) de todo Chile, por comuna, en `data/base/footprints/` y **separadas del Atlas**.
+
+| # | Tarea | Responsable | Requiere red | Estado |
+|---|---|---|---|---|
+| S0 | Herramienta `run.py footprints descargar --region X` + `footprints estado`, test sintético (recorte, asignación por mayor área, columnas, manifiesto) | Claude Code (o Codex: el código y los tests no necesitan red) | No para los tests | pendiente |
+| S1 | La Araucanía: descargar, validar contra los 181.475 de Temuco y medir tiempo y MB | Claude Code | Sí | pendiente |
+| S2 | Norte: Arica, Tarapacá, Antofagasta, Atacama y Coquimbo | **Seba** (comando en lote) | Sí | pendiente |
+| S3 | Centro: Valparaíso, Metropolitana, O'Higgins, Maule y Ñuble | **Seba** | Sí | pendiente |
+| S4 | Sur: Biobío, Los Ríos, Los Lagos, Aysén y Magallanes | **Seba** | Sí | pendiente |
+| S5 | QA nacional: conteo y área por comuna, duplicados en bordes regionales, edificios fuera de la DPA, comunas con cobertura sospechosamente baja | Claude Code o Codex | No | pendiente |
+| S6 | Integración: la ficha predial informa n.º de edificios, m² de huella y pisos estimados; el volumen usa los footprints nacionales | Claude Code | No | pendiente |
+| S7 | Teselas: PMTiles de edificios por región, como capa aparte en el mapa, con atribución | Codex | No | pendiente |
+
+Disco: el 2-oct-2026 quedaban **7,3 GB libres** en C:. Revisar con `Get-PSDrive C` antes de S2, porque el total nacional se estima en unos pocos GB.
+
 ## Entorno
 
 - Windows + PowerShell, venv en `.venv` (`.venv\Scripts\activate`), Python 3.12, pandas 3.x, geopandas 1.1.

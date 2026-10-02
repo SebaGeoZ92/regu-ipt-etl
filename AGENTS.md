@@ -22,6 +22,19 @@ el reparto de trabajo entre agentes y las reglas que no se pueden romper.
 | **Claude Code** | `master` | `etl/`, `run.py`, `tests/`, `config.yaml`, `fuentes/`, `legal_refs.json`, `docs/`, `CLAUDE.md`, `AGENTS.md` | `sig/` (salvo para integrar un PR revisado) |
 | **Codex** | `codex/sig-layouts` | **solo** `sig/` y `samples/` | `master`, `etl/` y todo lo demás |
 
+## Protocolo entre agentes
+
+1. El backlog vive en **`CLAUDE.md`, sección "Backlog"**. Léelo antes de elegir trabajo.
+2. Antes de empezar una tarea, márcala `en curso (<agente>, <fecha>)` y haz commit de ese cambio. **No tomes una
+   tarea que esté `en curso` por otro agente.**
+3. Al terminar, márcala `hecho (<commit>)` y deja una línea de traspaso: qué quedó, qué falta y cómo seguir.
+4. **Codex no tiene red** en su entorno (solo gestores de paquetes): toma tareas con "Requiere red: No" y trabaja
+   con muestras sintéticas o con `samples/`. Las tareas que descargan datos (por ejemplo, los footprints por
+   región) las hace Claude Code o las corre Seba con el comando documentado.
+5. Si te quedas sin cuota a mitad de camino, **primero** deja el estado exacto en el backlog.
+6. Seba aprueba el merge de cualquier PR hacia `master`.
+7. Antes de empezar, `git fetch origin` y `git pull`: otro agente puede haber marcado tareas o avanzado la rama.
+
 ## Codex: layouts SIG
 
 - Trabaja **solo** en la rama `codex/sig-layouts`, creada desde `master`. No hagas push a `master` ni lo rebasees.
