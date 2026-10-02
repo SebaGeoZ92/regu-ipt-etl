@@ -507,10 +507,10 @@ def cmd_footprints(cfg, args):
     if accion == "estado":
         t = F.estado(dir_fp)
         with pd.option_context("display.width", 200):
-            print(t.to_string(index=False) if len(t) else "Sin manifiestos todavía en data/base/footprints/")
-        libre = __import__("shutil").disk_usage(ROOT).free / 1e9
+            print(t.to_string(index=False) if len(t) else f"Sin manifiestos todavía en {dir_fp}")
+        libre = __import__("shutil").disk_usage(dir_fp if dir_fp.exists() else ROOT).free / 1e9
         print(f"\nTotal: {int(t.edificios.fillna(0).sum()) if len(t) else 0} edificios · "
-              f"{t.MB.fillna(0).sum() if len(t) else 0:.1f} MB · disco libre {libre:.1f} GB · {F.ATRIBUCION}")
+              f"{t.MB.fillna(0).sum() if len(t) else 0:.1f} MB · {dir_fp} · disco libre {libre:.1f} GB · {F.ATRIBUCION}")
         return
     if accion == "descargar":
         if not args.region:
