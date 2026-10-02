@@ -154,7 +154,7 @@ Huellas de Overture (ODbL) de todo Chile, por comuna, en `data/base/footprints/`
 
 | # | Tarea | Responsable | Requiere red | Estado |
 |---|---|---|---|---|
-| S0 | Herramienta `run.py footprints descargar --region X` + `footprints estado`, test sintético (recorte, asignación por mayor área, columnas, manifiesto) | Claude Code (o Codex: el código y los tests no necesitan red) | No para los tests | pendiente |
+| S0 | Herramienta `run.py footprints descargar --region X` + `footprints estado`, test sintético (recorte, asignación por mayor área, columnas, manifiesto) | Claude Code (o Codex: el código y los tests no necesitan red) | No para los tests | en curso (Claude Code, 2026-10-02) |
 | S1 | La Araucanía: descargar, validar contra los 181.475 de Temuco y medir tiempo y MB | Claude Code | Sí | pendiente |
 | S2 | Norte: Arica, Tarapacá, Antofagasta, Atacama y Coquimbo | **Seba** (comando en lote) | Sí | pendiente |
 | S3 | Centro: Valparaíso, Metropolitana, O'Higgins, Maule y Ñuble | **Seba** | Sí | pendiente |
