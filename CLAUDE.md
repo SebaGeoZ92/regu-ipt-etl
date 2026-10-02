@@ -176,6 +176,9 @@ Disco: el 2-oct-2026 quedaban **7,3 GB libres** en C:. Revisar con `Get-PSDrive 
 ## Entorno
 
 - Windows + PowerShell, venv en `.venv` (`.venv\Scripts\activate`), Python 3.12, pandas 3.x, geopandas 1.1.
+- **Dónde viven los datos** (2-oct-2026): las rutas salen de `paths` en `config.yaml` (por defecto `data/...`, relativas al repo, así que un clon sin D: funciona igual). `config.local.yaml` (no versionado) sobrescribe solo `paths`; el modelo está en `config.local.yaml.ejemplo` (`D:/regu-data/{raw,out,footprints,export,demanda}`). En el código, usar siempre `run.ruta(cfg, "<clave>")`, nunca `ROOT / cfg["paths"][...]`.
+  - Estado: **los datos siguen en C:** (`data/raw` 0,65 GB, `data/out` 3,2 GB, `data/base/footprints` 0,14 GB, `data/export` 0,42 GB). La migración a D: está bloqueada porque el usuario no tiene permiso de escritura en `D:\` (solo Administradores). Cuando exista `D:\regu-data` con permiso de modificación: copiar con robocopy, comparar número de archivos y bytes, correr el test y una ficha, `footprints estado`, activar `config.local.yaml` y recién entonces borrar de C:.
+  - `data/base/comunas_bcn` y `data/base/normas_zona.csv` quedan en el repo (livianos).
 - Tests: `python tests\test_sintetico.py`
 - Todo trabajo ocurre en el PC personal de Seba, fuera de su empleo. No usar datos ni recursos institucionales.
 

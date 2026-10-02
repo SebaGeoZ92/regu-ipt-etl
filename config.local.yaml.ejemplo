@@ -1,0 +1,8 @@
+# Copiar como config.local.yaml (NO se versiona) para dejar los datos pesados fuera del repo, p.ej. en otro disco.
+# Solo se sobrescribe el bloque `paths`; lo que no se indique usa las rutas por defecto de config.yaml (data/...).
+paths:
+  raw: D:/regu-data/raw
+  out: D:/regu-data/out
+  footprints: D:/regu-data/footprints
+  export: D:/regu-data/export
+  demanda: D:/regu-data/demanda

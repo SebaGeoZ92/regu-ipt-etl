@@ -10,9 +10,14 @@ arcgis:
   pause_s: 0.5         # pausa de cortesía entre requests
   geometry_precision: 7
 
+# Rutas por defecto, relativas al repo (funcionan en cualquier clon). Para dejar lo pesado en otro disco, crear
+# config.local.yaml (no versionado) con un bloque `paths:` que las sobrescriba; ver config.local.yaml.ejemplo.
 paths:
   raw: data/raw        # caché de descargas (una vez bajado, no se vuelve a pedir)
   out: data/out
+  footprints: data/base/footprints   # Overture (ODbL), capa aparte del Atlas
+  export: data/export  # paquetes para compartir (zip)
+  demanda: data/demanda   # registro de consultas de ficha() (sin coordenadas)
   comunas: data/base/comunas_bcn/comunas.shp   # BCN SIIT, División comunal (346 comunas, EPSG:3857)
 
 comunas:

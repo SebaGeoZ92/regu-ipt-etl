@@ -12,3 +12,6 @@ samples/**/*.parquet
 samples/**/*.jsonl
 samples/**/*overture*
 samples/**/*catastral*
+
+# Rutas locales de datos (p.ej. D:/regu-data), propias de cada máquina
+config.local.yaml

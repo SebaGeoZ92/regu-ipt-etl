@@ -48,11 +48,23 @@ log = logging.getLogger("regu-ipt")
 
 
 def cargar_cfg() -> dict:
-    return yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+    """config.yaml + config.local.yaml (opcional, no versionado), que solo sobrescribe `paths` (p.ej. datos en D:)."""
+    cfg = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+    local = ROOT / "config.local.yaml"
+    if local.exists():
+        extra = yaml.safe_load(local.read_text(encoding="utf-8")) or {}
+        cfg["paths"] = {**cfg["paths"], **(extra.get("paths") or {})}
+    return cfg
+
+
+def ruta(cfg: dict, clave: str) -> Path:
+    """Ruta de datos de config: absoluta tal cual (p.ej. D:/regu-data/out) o relativa al repo (data/out)."""
+    p = Path(cfg["paths"][clave])
+    return p if p.is_absolute() else ROOT / p
 
 
 def cargar_comunas(cfg: dict, region: str | None) -> gpd.GeoDataFrame:
-    p = ROOT / cfg["paths"]["comunas"]
+    p = ruta(cfg, "comunas")
     if not p.exists():
         sys.exit(f"Falta la capa de comunas en {p}. Ver README (DPA nacional).")
     c = cfg["comunas"]
@@ -96,7 +108,7 @@ def cliente(cfg) -> ArcGISClient:
 
 
 def catalogo_path(cfg) -> Path:
-    return ROOT / cfg["paths"]["raw"] / "catalogo.json"
+    return ruta(cfg, "raw") / "catalogo.json"
 
 
 def cmd_discover(cfg, args):
@@ -180,7 +192,7 @@ def features_en_cache(p: Path) -> int | None:
 
 def cmd_download(cfg, args):
     cli = cliente(cfg)
-    raw = ROOT / cfg["paths"]["raw"]
+    raw = ruta(cfg, "raw")
     fallas = []
     cat = leer_catalogo(cfg)
     if args.region:
@@ -220,7 +232,7 @@ def cmd_build(cfg, args):
     comunas = cargar_comunas(cfg, args.region)
     resolver = ComunaResolver(comunas if not args.region else cargar_comunas(cfg, None),
                               c["field_cut"], c["field_nombre"])
-    raw = ROOT / cfg["paths"]["raw"]
+    raw = ruta(cfg, "raw")
     capas, afect = [], []
     cat = leer_catalogo(cfg)
     for i, e in enumerate(cat, 1):
@@ -262,7 +274,7 @@ def cmd_build(cfg, args):
     legal =json.loads((ROOT / "legal_refs.json").read_text(encoding="utf-8"))
     capa = anotar_legal(capa, legal)
     sufijo = norm_txt(args.region).lower().replace(" ", "_") if args.region else "nacional"
-    prod = escribir(capa, afect_gdf, qas, ROOT / cfg["paths"]["out"], cfg, sufijo, sin_comuna, fuera_dpa)
+    prod = escribir(capa, afect_gdf, qas, ruta(cfg, "out"), cfg, sufijo, sin_comuna, fuera_dpa)
     # Inventario del servidor: instrumentos cargados (aunque la partición los tape), para `run.py vigencia`
     inv = (fuentes[fuentes["ipt_tipo"].isin(["PRC", "SECCIONAL", "LU", "PRI", "PRM"])]
            .groupby(["servicio", "capa", "ipt_tipo", "ipt_nombre", "cut_ipt"], dropna=False).size()
@@ -270,7 +282,7 @@ def cmd_build(cfg, args):
     inv.to_csv(Path(prod["gpkg"]).with_name(Path(prod["gpkg"]).stem.replace("regu_ipt_", "inventario_servidor_") + ".csv"),
                index=False, encoding="utf-8-sig")
     # Un archivo por alcance (nacional o región): un build regional no pisa las decisiones del nacional
-    p_rev = ROOT / cfg["paths"]["out"] / f"revision_arquitecto_{sufijo}.csv"
+    p_rev = ruta(cfg, "out") / f"revision_arquitecto_{sufijo}.csv"
     rev = generar_revision(capa, p_rev)
     log.info("%s: %d zonas con revisar=True (%d ya decididas)", p_rev.name, len(rev), int((rev["decision"] != "").sum()))
     log.info("Listo: %s", json.dumps(prod["resumen"], ensure_ascii=False))
@@ -289,10 +301,10 @@ def cmd_ficha(cfg, args):
         geom = Point(args.lon, args.lat)
     else:
         sys.exit("Uso: python run.py ficha --lon X --lat Y  |  --wkt \"POLYGON((...))\"  [--gpkg archivo]")
-    gpkg = Path(args.gpkg) if args.gpkg else ultimo_gpkg(ROOT / cfg["paths"]["out"])
+    gpkg = Path(args.gpkg) if args.gpkg else ultimo_gpkg(ruta(cfg, "out"))
     if not gpkg or not gpkg.exists():
         sys.exit("No hay GPKG de build. Corre primero: python run.py build")
-    print(a_json(ficha(geom, gpkg)))
+    print(a_json(ficha(geom, gpkg, dir_demanda=ruta(cfg, "demanda"))))
 
 
 def cmd_mapa(cfg, args):
@@ -302,7 +314,7 @@ def cmd_mapa(cfg, args):
     c = cfg["comunas"]
     comunas = cargar_comunas(cfg, args.region)
     sufijo = norm_txt(args.region).lower().replace(" ", "_")
-    out = ROOT / cfg["paths"]["out"]
+    out = ruta(cfg, "out")
     gpkg = Path(args.gpkg) if args.gpkg else (sorted(out.glob(f"regu_ipt_{sufijo}_*.gpkg")) or [None])[-1]
     if not gpkg or not gpkg.exists():
         sys.exit(f"No hay GPKG de la región. Corre primero: python run.py build --region {args.region}")
@@ -317,7 +329,7 @@ def cmd_vigencia(cfg, args):
     from etl.ficha import ultimo_gpkg
     from etl.portal import PortalIPT
     from etl.vigencia import emparejar, familias, resumen_brechas, tabla_vigencia
-    out = ROOT / cfg["paths"]["out"]
+    out = ruta(cfg, "out")
     if args.gpkg:
         gpkg = Path(args.gpkg)
     elif args.region:
@@ -327,7 +339,7 @@ def cmd_vigencia(cfg, args):
         gpkg = ultimo_gpkg(out)
     if not gpkg or not gpkg.exists():
         sys.exit("No hay GPKG de build. Corre primero: python run.py build")
-    portal = PortalIPT(ROOT / cfg["paths"]["raw"] / "portal", pause_s=float(cfg["arcgis"].get("pause_s", 0.5)) * 2)
+    portal = PortalIPT(ruta(cfg, "raw") / "portal", pause_s=float(cfg["arcgis"].get("pause_s", 0.5)) * 2)
     fams = familias(portal.vigentes(refresh=args.refresh))
     serv = pyogrio.read_dataframe(gpkg, layer="capa_ipt", columns=["cut", "comuna", "region", "ipt_tipo", "ipt_nombre"],
                                   read_geometry=False).drop_duplicates()
@@ -358,7 +370,7 @@ def cmd_fuentes(cfg, args):
     """Fuentes bajo demanda (docs/FUENTES_BAJO_DEMANDA.md): estado | validar. 'activar' aún no existe."""
     from etl.fuentes import DIR_FUENTES, cargar_contratos, estado, validar
     accion = args.archivo or "estado"
-    dir_demanda = ROOT / "data" / "demanda"
+    dir_demanda = ruta(cfg, "demanda")
     if accion == "validar":
         esquema = json.loads((DIR_FUENTES / "_esquema.json").read_text(encoding="utf-8"))
         malos = 0
@@ -388,9 +400,9 @@ def cmd_volumen(cfg, args):
     accion = args.archivo or "candidatas"
     if not args.ipt:
         sys.exit('Uso: python run.py volumen candidatas|footprints|plantilla --ipt "Temuco" [--region X] [--zona Z]')
-    out = ROOT / cfg["paths"]["out"]
+    out = ruta(cfg, "out")
     slug = norm_txt(args.ipt).lower().replace(" ", "_")
-    dir_fp = ROOT / "data" / "base" / "footprints"
+    dir_fp = ruta(cfg, "footprints")
     if accion == "plantilla":
         if not args.zona:
             sys.exit("Falta --zona (la que elija el arquitecto)")
@@ -439,7 +451,7 @@ def cmd_muestra(cfg, args):
     if not args.region or not args.cut:
         sys.exit("Uso: python run.py muestra --region ARAUCANIA --cut 09101 [--nombre temuco]")
     suf = norm_txt(args.region).lower().replace(" ", "_")
-    out = ROOT / cfg["paths"]["out"]
+    out = ruta(cfg, "out")
     gpkg = Path(args.gpkg) if args.gpkg else (sorted(out.glob(f"regu_ipt_{suf}_*.gpkg")) or [None])[-1]
     if not gpkg or not gpkg.exists():
         sys.exit(f"No hay GPKG de la región. Corre primero: python run.py build --region {args.region}")
@@ -491,7 +503,7 @@ def cmd_footprints(cfg, args):
     """Footprints nacionales de Overture por región (docs/FOOTPRINTS_NACIONAL.md): descargar | estado."""
     from etl import footprints as F
     accion = args.archivo or "estado"
-    dir_fp = ROOT / "data" / "base" / "footprints"
+    dir_fp = ruta(cfg, "footprints")
     if accion == "estado":
         t = F.estado(dir_fp)
         with pd.option_context("display.width", 200):
@@ -554,7 +566,7 @@ def main():
     cfg = cargar_cfg()
     if args.cmd in ("discover", "download", "build", "all") or (args.cmd == "footprints" and args.archivo == "descargar"):
         # convención: procesos largos dejan su avance en data/out/progreso.log (ver etl/progreso.py)
-        progreso.iniciar(ROOT / cfg["paths"]["out"] / "progreso.log")
+        progreso.iniciar(ruta(cfg, "out") / "progreso.log")
     if args.cmd in ("discover", "all"):
         cmd_discover(cfg, args)
     if args.cmd == "catalogo":
