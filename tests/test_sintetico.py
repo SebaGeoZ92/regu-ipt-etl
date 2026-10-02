@@ -516,6 +516,43 @@ def test_footprints_sintetico():
         assert not ids_b & set(gpd.read_parquet(dfp / "region_alfa.parquet").id)
 
 
+def test_ocupacion_sintetico():
+    """Etapa 1 de VOLÚMENES: huella recortada por zona, edificio contado una vez, riesgo suma a su zona."""
+    from etl import ocupacion as O
+    crs = "ESRI:102033"
+    piezas = gpd.GeoDataFrame({
+        "ipt_nombre": ["PRC X", "PRC X", "PRC X", "PRC X", "LU Y"],
+        "zona": ["A", "A", "B", None, None],
+        "fuente": ["PRC", "PRC", "PRC", "PRC", "LU"],
+        "riesgo": [True, False, False, False, False],
+        "comuna": ["Uno"] * 4 + ["Dos"], "region": ["Región R"] * 5,
+    }, geometry=[box(0, 0, 50, 100), box(50, 0, 100, 100), box(100, 0, 200, 100), box(300, 0, 400, 100), box(0, 200, 100, 300)], crs=crs)
+    edif = gpd.GeoDataFrame({"id": list("abcd")}, geometry=[
+        box(10, 10, 30, 30),      # 400 m² dentro de A (pieza de riesgo)
+        box(60, 10, 90, 30),      # 600 m² dentro de A
+        box(95, 50, 110, 60),     # 150 m²: 50 en A, 100 en B; su punto cae en B
+        box(500, 500, 510, 510),  # fuera de toda zona
+    ], crs=crs)
+    t = O.calcular(piezas, edif).set_index(["ipt", "zona"])
+    a, b, s = t.loc[("PRC X", "A")], t.loc[("PRC X", "B")], t.loc[("PRC X", "(sin zona)")]
+    assert abs(a.ha - 1.0) < 1e-9 and abs(a.m2_huella - 1050) < 1e-6 and a.n_edificios == 2, a
+    assert abs(a.coef_ocupacion - 0.105) < 1e-9
+    assert abs(b.ha - 1.0) < 1e-9 and abs(b.m2_huella - 100) < 1e-6 and b.n_edificios == 1 and abs(b.coef_ocupacion - 0.01) < 1e-9, b
+    assert s.n_edificios == 0 and s.m2_huella == 0 and abs(s.ha - 1.0) < 1e-9, s
+    assert ("LU Y", "(sin zona)") not in t.index, "solo cuentan las piezas PRC"
+    # la huella total nunca supera la de los edificios, y cada edificio se cuenta una sola vez
+    assert t.m2_huella.sum() <= 1150 + 1e-6 and t.n_edificios.sum() == 3
+    # combinar suma una misma (ipt, zona) que cruce regiones y recalcula el coeficiente
+    c = O.combinar([O.calcular(piezas, edif), O.calcular(piezas, edif)]).set_index(["ipt", "zona"])
+    assert abs(c.loc[("PRC X", "A")].ha - 2.0) < 1e-9 and abs(c.loc[("PRC X", "A")].coef_ocupacion - 0.105) < 1e-9
+    # capa de mapa: una geometría por zona, color según el tramo y "sin edificios" aparte
+    m = O.capa_mapa(piezas, O.calcular(piezas, edif)).set_index("zona")
+    assert len(m) == 3 and m.crs.to_epsg() == 4326
+    assert m.loc["A", "tramo"] == "10 – 20 %" and m.loc["B", "tramo"] == "< 2 %" and m.loc["(sin zona)", "tramo"] == "sin edificios"
+    assert O.qa(O.calcular(piezas, edif))["zonas_coef_mayor_100"] == 0
+    print("  ocupacion: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -588,6 +625,7 @@ if __name__ == "__main__":
     test_fuentes_contratos()
     test_volumen_paso0()
     test_footprints_sintetico()
+    test_ocupacion_sintetico()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
