@@ -581,6 +581,83 @@ def test_vcalc_sintetico():
     print("  vcalc: OK")
 
 
+def _app_fixture(tmp: Path):
+    """Mundo mínimo para Regu Suelo: GPKG de build, vigencia, ocupación, normas, comunas y footprints (EPSG:4326)."""
+    import pandas as pd
+    from app.ajustes import Ajustes
+    from etl import volumen as V
+    out = tmp / "out"
+    out.mkdir(parents=True)
+    base = dict(comuna="Temuco", cut="09101", region="Región de La Araucanía", ipt_tipo="PRC", ipt_nombre="Temuco",
+                clase="U1", norma_titulo="Plan Regulador Comunal", aviso="Información referencial.")
+    zh2 = box(-72.60, -38.74, -72.59, -38.73)
+    zhr5 = box(-72.59, -38.74, -72.58, -38.73)
+    capa = gpd.GeoDataFrame([
+        {**base, "zona": "ZH2", "riesgo": False, "id": "a1"},
+        {**base, "zona": "ZHR5", "riesgo": True, "id": "a2"},
+    ], geometry=[zh2, zhr5], crs=4326)
+    afec = gpd.GeoDataFrame([{"ipt_tipo": "PRC", "capa": "Areas_protec", "zona": "APP 1", "zona_desc": "Área de protección",
+                              "riesgo": False}], geometry=[box(-72.60, -38.74, -72.595, -38.735)], crs=4326)
+    gpkg = out / "regu_ipt_nacional_20261004.gpkg"
+    capa.to_file(gpkg, layer="capa_ipt", driver="GPKG")
+    afec.to_file(gpkg, layer="afectaciones", driver="GPKG")
+    pd.DataFrame([{"ipt_tipo": "PRC", "ipt_nombre": "Temuco", "cut": "09101", "portal_id": "1055", "portal_tipo": "PRC",
+                   "denominacion": "Plan Regulador Comunal de Temuco-Labranza", "norma": "Resolución N° 149",
+                   "fecha_vigencia": "2010-02-02", "ultima_modificacion": "2015-06-13", "n_modificaciones": "3",
+                   "ordenanza_url": "https://ejemplo.cl/ord.pdf", "score": "0.5", "confianza": "alta"}]
+                 ).to_csv(out / "vigencia_match.csv", index=False, encoding="utf-8-sig")
+    pd.DataFrame([{"ipt": "Temuco", "zona": "ZH2", "ha": 100.0, "m2_huella": 26000, "coef_ocupacion": 0.26, "n_edificios": 500,
+                   "region": "Región de La Araucanía", "comunas": "Temuco"}]
+                 ).to_csv(out / "ocupacion_zonas_nacional_20261004.csv", index=False, encoding="utf-8-sig")
+    normas = tmp / "normas_zona.csv"
+    fila = {c: "" for c in V.COLUMNAS_NORMAS} | {
+        "ipt_nombre": "Temuco", "zona": "ZH2", "agrupamiento": "Aislado", "ocupacion_max": "0.5", "constructibilidad_max": "1.5",
+        "altura_max_m": "17.5", "articulo_fuente": "Art. 16, tabla B 2", "estado": "BORRADOR"}
+    pd.DataFrame([fila]).to_csv(normas, index=False, encoding="utf-8-sig")
+    com = gpd.GeoDataFrame([{"cod_comuna": 9101, "Comuna": "Temuco", "Region": "Región de La Araucanía"}],
+                           geometry=[box(-72.62, -38.76, -72.56, -38.70)], crs=4326)
+    com.to_file(tmp / "comunas.gpkg", driver="GPKG")
+    fp = tmp / "fp"
+    fp.mkdir()
+    return Ajustes(gpkg=gpkg, dir_footprints=fp, normas=normas, dir_out=out, dir_demanda=tmp / "demanda",
+                   comunas=tmp / "comunas.gpkg")
+
+
+def test_app_sintetico():
+    """A1 de Regu Suelo: /api/comunas y /api/ficha (punto y polígono) con GPKG sintético, normas BORRADOR marcadas."""
+    from fastapi.testclient import TestClient
+    from app.main import crear_app
+    with tempfile.TemporaryDirectory() as d:
+        a = _app_fixture(Path(d))
+        c = TestClient(crear_app(a))
+        com = c.get("/api/comunas").json()
+        assert com[0]["cut"] == "09101" and com[0]["nombre"] == "Temuco" and len(com[0]["bbox"]) == 4, com
+        f = c.get("/api/ficha", params={"lon": -72.595, "lat": -38.738}).json()
+        p = f["particion"][0]
+        assert p["clase"] == "U1" and p["ipt"] == "Temuco" and p["zona"] == "ZH2" and p["pct"] == 100.0, p
+        assert p["vigencia"]["norma"] == "Resolución N° 149" and p["vigencia"]["ordenanza_url"].endswith(".pdf")
+        assert p["ocupacion"]["coef_ocupacion"] == 0.26 and p["ocupacion"]["n_edificios"] == 500
+        assert p["normas"][0]["estado"] == "BORRADOR" and p["normas"][0]["articulo_fuente"] == "Art. 16, tabla B 2"
+        assert p["normas"][0]["marca"] == "BORRADOR · uso interno" and f["marca"] == "BORRADOR · uso interno"
+        assert "ocupacion_max" in p["normas"][0] and "distanciamiento_m" not in p["normas"][0], "solo columnas con valor"
+        assert any(x["zona"] == "APP 1" for x in f["afectaciones"]) and f["aviso"] and isinstance(f["tiempo_ms"], int)
+        r = c.get("/api/ficha", params={"lon": -72.585, "lat": -38.735}).json()      # ZHR5: riesgo y sin norma ni ocupación
+        assert r["particion"][0]["zona"] == "ZHR5" and r["riesgo_pct"] == 100.0
+        assert r["particion"][0]["normas"] == [] and r["particion"][0]["ocupacion"] is None and r["marca"] is None
+        fuera = c.get("/api/ficha", params={"lon": -70.0, "lat": -33.0}).json()
+        assert fuera["cobertura"] == "fuera_dpa" and fuera["particion"] == []
+        poli = {"type": "Feature", "properties": {}, "geometry": {"type": "Polygon", "coordinates": [[
+            [-72.595, -38.736], [-72.585, -38.736], [-72.585, -38.734], [-72.595, -38.734], [-72.595, -38.736]]]}}
+        pf = c.post("/api/ficha", json=poli).json()
+        assert {x["zona"] for x in pf["particion"]} == {"ZH2", "ZHR5"} and abs(sum(x["pct"] for x in pf["particion"]) - 100) < 0.1
+        assert pf["marca"] == "BORRADOR · uso interno" and c.post("/api/ficha", json={"type": "Polygon", "coordinates": []}).status_code == 422
+        assert c.post("/api/ficha", json={"type": "LineString", "coordinates": [[0, 0], [1, 1]]}).status_code == 422
+        assert c.get("/api/ficha", params={"lon": 500, "lat": 0}).status_code == 422
+        log = (Path(d) / "demanda" / "consultas.jsonl").read_text(encoding="utf-8")
+        assert "-72.5" not in log and "-38.7" not in log, "el registro de demanda no lleva coordenadas"
+    print("  app: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -655,6 +732,7 @@ if __name__ == "__main__":
     test_footprints_sintetico()
     test_ocupacion_sintetico()
     test_vcalc_sintetico()
+    test_app_sintetico()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
