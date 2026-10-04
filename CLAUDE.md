@@ -223,11 +223,18 @@ Aplicación local (`python run.py app`, `http://localhost:8000`): FastAPI + Duck
 | # | Tarea | Responsable | Requiere red | Estado |
 |---|---|---|---|---|
 | A1 | Dependencias (fastapi, uvicorn, duckdb) y esqueleto `app/`, con `/api/comunas` y `/api/ficha` (punto y polígono), más tests con GPKG sintético | Claude Code | Sí (instalar) | hecho (`40f9f6c`) |
-| A2 | `/api/edificios` (DuckDB, bbox, tope y `altura_est`) y `/api/volumen` (huella, pisos, V_max/V_opt fase 1 con norma, fuente y confianza) | Claude Code | No | en curso (Claude Code, 4-oct-2026) |
-| A3 | PMTiles locales de normativa y ocupación, `/tiles/{tema}.pmtiles` con *range requests*, y MapLibre/PMTiles servidos desde `app/static/` | Claude Code | Sí (bajar JS una vez) | pendiente |
+| A2 | `/api/edificios` (DuckDB, bbox, tope y `altura_est`) y `/api/volumen` (huella, pisos, V_max/V_opt fase 1 con norma, fuente y confianza) | Claude Code | No | hecho (`8e953b3`) |
+| A3 | PMTiles locales de normativa y ocupación, `/tiles/{tema}.pmtiles` con *range requests*, y MapLibre/PMTiles servidos desde `app/static/` | Claude Code | Sí (bajar JS una vez) | en curso (Claude Code, 4-oct-2026) |
 | A4 | Frontend: mapa base, buscador, selector de capas, panel de ficha, edificios 3D | Claude Code | No | pendiente |
 | A5 | Dibujo de predio y volumen 3D (existente sólido y envolvente V_opt translúcida) con marca BORRADOR | Claude Code | No | pendiente |
 | A6 | `/api/lamina` con `sig/` y botón "Lámina PDF"; `python run.py app`; criterios de aceptación y cierre | Claude Code | No | pendiente |
+
+Traspaso A1 y A2 (`40f9f6c`, `8e953b3`): `app/` (`main.py`, `ajustes.py`, `datos.py`, `edificios.py`) y `etl/envolvente.py`. Endpoints listos: `GET /api/comunas`, `GET|POST /api/ficha`, `GET /api/edificios?bbox=&zoom=&limite=` y `POST /api/volumen`. Se crea con `crear_app(Ajustes.desde_cfg(cfg, run.ruta))`; los tests usan un GPKG y un parquet sintéticos (`_app_fixture` en `tests/test_sintetico.py`).
+- **Medido con datos reales** (GPKG nacional del 29-sep, footprints de La Araucanía): ficha de un punto 80 ms (205 ms la primera vez); edificios del centro de Temuco 320 ms (941 ms en frío, con DuckDB cargando) y 1 a 2 MB de JSON; volumen de un predio 340 a 450 ms. Criterio de los 300 ms cumplido para la ficha.
+- **DuckDB**: `INSTALL spatial` necesita red **una sola vez**; después carga desde su caché. Filtra por `cut` de las comunas que cruza el bbox (sin eso, cada consulta escanea el millón de edificios de la región, unos 285 ms). `/api/edificios` pone tope de 5.000 (máx. 20.000) y avisa; sobre 0,15° de lado pide acercarse.
+- **`altura_piso_ref_m` es un parámetro del modelo, NO una norma** (`config.yaml`, bloque `volumen`, 3,5 m, el módulo de piso que usa la ordenanza de Temuco en el Art. 16 `*5`). Una norma de zona que traiga el valor en `normas/normas_zona.csv` lo reemplaza. Cada resultado lo declara en `simplificaciones`. **Pendiente: que el arquitecto lo confirme.**
+- Reglas del cálculo (fase 1, `docs/VOLUMEN_PILOTO.md`): retranqueo uniforme `max(antejardín, distanciamiento)`; si el antejardín trae varios valores según la vía, se usa el menor porque el frente no se identifica; sin rasantes. Un predio angosto sin base edificable devuelve `sin_base` (no un 0 engañoso). Una zona sin normas devuelve solo lo existente. Sin edificios en Overture, el existente es 0 y se avisa. Los pisos sin dato (casi todos: `num_floors` es 0,56 %) se asumen 1 y se marcan cota inferior, confianza baja.
+- Cuidado: con el retranqueo uniforme de 3 a 4 m, los predios chicos (p. ej. los de 100 m² de Villa Antukuyen) quedan sin base edificable; es una limitación declarada de la fase 1.
 
 ## Entorno
 
