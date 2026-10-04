@@ -18,6 +18,7 @@ paths:
   footprints: data/base/footprints   # Overture (ODbL), capa aparte del Atlas
   export: data/export  # paquetes para compartir (zip)
   demanda: data/demanda   # registro de consultas de ficha() (sin coordenadas)
+  normas: normas/normas_zona.csv   # normas de zona curadas por el arquitecto: VERSIONADO, no va a data/ ni a otro disco
   comunas: data/base/comunas_bcn/comunas.shp   # BCN SIIT, División comunal (346 comunas, EPSG:3857)
 
 comunas:

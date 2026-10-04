@@ -4,7 +4,7 @@
   IPT enlaza la ordenanza. `python run.py volumen candidatas --ipt "Temuco"`.
 - descargar_footprints(): edificios de Overture Maps (ODbL) para el bbox del PRC, en data/base/footprints/, con
   release, fecha y atribución. Capa APARTE: nunca se fusiona con capa_ipt ni con el Atlas.
-- plantilla_normas(): agrega a data/base/normas_zona.csv una fila vacía para la zona elegida. Las normas NO se
+- plantilla_normas(): agrega a normas/normas_zona.csv (paths.normas) una fila vacía para la zona elegida. Las normas NO se
   inventan: las llena el arquitecto (estado FICTICIO | BORRADOR | VALIDADO; solo VALIDADO se muestra).
 """
 from __future__ import annotations

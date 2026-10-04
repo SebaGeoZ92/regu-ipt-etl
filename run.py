@@ -16,7 +16,7 @@ Uso:
   python run.py volumen footprints|candidatas --ipt "Temuco" --region ARAUCANIA   # piloto de volumen, paso 0
   python run.py footprints descargar --region "ARICA|TARAPACA"      # footprints de Overture por región (reanudable)
   python run.py footprints estado                                   # región | edificios | MB | release | fecha | completa
-  python run.py volumen plantilla --ipt "Temuco" --zona "ZH-1"      # fila vacía en data/base/normas_zona.csv
+  python run.py volumen plantilla --ipt "Temuco" --zona "ZH-1"      # fila vacía en normas/normas_zona.csv
 """
 from __future__ import annotations
 
@@ -457,8 +457,8 @@ def cmd_volumen(cfg, args):
     if accion == "plantilla":
         if not args.zona:
             sys.exit("Falta --zona (la que elija el arquitecto)")
-        df = V.plantilla_normas(ROOT / "data" / "base" / "normas_zona.csv", args.ipt, args.zona)
-        print(f"data/base/normas_zona.csv: {len(df)} filas; la de {args.ipt} | {args.zona} queda con las normas vacías "
+        df = V.plantilla_normas(ruta(cfg, "normas"), args.ipt, args.zona)
+        print(f"{ruta(cfg, 'normas')}: {len(df)} filas; la de {args.ipt} | {args.zona} queda con las normas vacías "
               f"para que las llene el arquitecto (estado FICTICIO | BORRADOR | VALIDADO).")
         return
     if args.gpkg:

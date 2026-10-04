@@ -10,7 +10,7 @@ Siempre es una **estimación referencial**. No es un anteproyecto ni un permiso.
 
 ## Reglas duras
 
-1. **Las normas NO se inventan.** Los valores reales los llena el arquitecto (Mario) en `data/base/normas_zona.csv`. Para desarrollo y tests se usan valores marcados `FICTICIO`, que nunca se muestran al público.
+1. **Las normas NO se inventan.** Los valores reales los llena el arquitecto (Mario) en `normas/normas_zona.csv` (versionado en el repo). Para desarrollo y tests se usan valores marcados `FICTICIO`, que nunca se muestran al público.
 2. **Footprints en capa aparte.** Overture Maps es ODbL: va a `data/base/footprints/`, con atribución, y nunca se fusiona dentro de `capa_ipt` ni del Atlas.
 3. **Las claves de API no van al repo.** La clave de catastral.cl va en la variable de entorno `CATASTRAL_API_KEY`.
 4. **Privacidad:** no se guardan ni se muestran nombres de propietarios. La comparación entre lo existente y lo declarado es para quien consulta **su** predio; no se generan listados de predios con "posible construcción irregular".
@@ -20,7 +20,7 @@ Siempre es una **estimación referencial**. No es un anteproyecto ni un permiso.
 
 `run.py volumen candidatas --ipt "Temuco"`: tabla de zonas del PRC de Temuco con `zona | ha | n_predios (si hay datos) | n_footprints | ¿ordenanza en Portal IPT?`. Mario elige una zona que conozca bien, idealmente residencial con variedad de predios.
 
-Luego genera `data/base/normas_zona.csv` con una fila para esa zona y las columnas vacías:
+Luego genera `normas/normas_zona.csv` con una fila para esa zona y las columnas vacías:
 
 ```
 ipt_nombre, zona, ocupacion_max, constructibilidad_max, altura_max_pisos, altura_max_m,
