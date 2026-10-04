@@ -53,6 +53,18 @@
   .boton { background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font: inherit; cursor: pointer; }
   .boton:hover { border-color: var(--accent); }
   .boton[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .boton[hidden] { display: none; }
+  body.dibujando #mapa .maplibregl-canvas { cursor: crosshair; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 6px 0; }
+  .kpi { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+  .kpi b { display: block; font-size: 17px; line-height: 1.2; }
+  .kpi span { color: var(--muted); font-size: 11.5px; }
+  .kpi span.chip { color: #fff; font-size: 12px; }
+  .chip { display: inline-block; border-radius: 10px; padding: 0 8px; font-size: 12px; font-weight: 600; color: #fff; background: #7a847c; vertical-align: 1px; }
+  .chip.holgura { background: #2e7d4f; } .chip.al_limite { background: #b7791f; } .chip.excede { background: #b3261e; }
+  .escenarios label { display: block; margin: 2px 0; cursor: pointer; }
+  .leyenda3d i { display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: -2px; border: 1px solid rgba(0,0,0,.3); }
+  ul.simp { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
   aside { overflow: auto; border-left: 1px solid var(--line); background: var(--surface); padding: 12px 14px 18px; }
   aside h2 { font-size: 16px; margin: 0 0 2px; }
   aside h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 4px; }
@@ -101,6 +113,8 @@
       <div class="fondo" id="fondos" role="radiogroup" aria-label="Mapa base"></div>
     </div>
     <div id="acciones">
+      <button class="boton" id="bdibujar" aria-pressed="false" title="Dibuja el predio con clics (doble clic o Enter para terminar) y calcula su ficha y su volumen">Dibujar predio</button>
+      <button class="boton" id="blimpiar" hidden title="Borra el predio dibujado y su volumen">Limpiar</button>
       <button class="boton" id="blamina" title="Descarga la lámina comunal en PDF (A3) de la comuna al centro del mapa">Lámina PDF</button>
       <button class="boton" id="b3d" aria-pressed="false" title="Inclinar el mapa para ver los edificios en 3D">3D</button>
     </div>
@@ -183,7 +197,9 @@ const mapa = new maplibregl.Map({
   style: {version: 8, sources: {
     ...fuentesFondo,
     normativa: {type: "vector", url: tesela("normativa")}, ocupacion: {type: "vector", url: tesela("ocupacion")},
-    comunas: {type: "vector", url: tesela("comunas")}, edificios: {type: "geojson", data: vacio}},
+    comunas: {type: "vector", url: tesela("comunas")}, edificios: {type: "geojson", data: vacio},
+    dibujo: {type: "geojson", data: vacio}, predio: {type: "geojson", data: vacio},
+    existente: {type: "geojson", data: vacio}, envolvente: {type: "geojson", data: vacio}},
   layers: [
     {id: "fondo", type: "background", paint: {"background-color": "#e6e8df"}},
     ...capasFondo,
@@ -193,7 +209,17 @@ const mapa = new maplibregl.Map({
     {id: "comunas", type: "line", source: "comunas", "source-layer": "comunas", paint: {"line-color": "#2b332d", "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.4, 12, 1.4]}},
     {id: "edificios", type: "fill-extrusion", source: "edificios", minzoom: ZOOM_EDIFICIOS, paint: {
       "fill-extrusion-height": ["get", "altura_est"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.92,
-      "fill-extrusion-color": ["match", ["get", "altura_fuente"], "estimado", "#c4c9d1", "#8794a6"]}}]},
+      "fill-extrusion-color": ["match", ["get", "altura_fuente"], "estimado", "#c4c9d1", "#8794a6"]}},
+    // Predio dibujado: lo existente en sólido y la envolvente posible (fase 1) translúcida
+    {id: "predio-relleno", type: "fill", source: "predio", paint: {"fill-color": "#1f5f73", "fill-opacity": 0.12}},
+    {id: "predio-linea", type: "line", source: "predio", paint: {"line-color": "#1f5f73", "line-width": 2.5}},
+    {id: "existente3d", type: "fill-extrusion", source: "existente", paint: {
+      "fill-extrusion-height": ["get", "altura_m"], "fill-extrusion-base": 0, "fill-extrusion-color": "#3d4552", "fill-extrusion-opacity": 1}},
+    {id: "envolvente3d", type: "fill-extrusion", source: "envolvente", paint: {
+      "fill-extrusion-height": ["get", "altura"], "fill-extrusion-base": 0, "fill-extrusion-color": "#12a38a", "fill-extrusion-opacity": 0.38}},
+    {id: "dibujo-relleno", type: "fill", source: "dibujo", filter: ["==", ["geometry-type"], "Polygon"], paint: {"fill-color": "#1f5f73", "fill-opacity": 0.15}},
+    {id: "dibujo-linea", type: "line", source: "dibujo", filter: ["==", ["geometry-type"], "LineString"], paint: {"line-color": "#1f5f73", "line-width": 2, "line-dasharray": [2, 1]}},
+    {id: "dibujo-vertices", type: "circle", source: "dibujo", filter: ["==", ["geometry-type"], "Point"], paint: {"circle-radius": 5, "circle-color": "#ffffff", "circle-stroke-color": "#1f5f73", "circle-stroke-width": 2}}]},
 });
 mapa.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "bottom-right");
 mapa.addControl(new maplibregl.ScaleControl({unit: "metric"}), "bottom-left");
@@ -301,9 +327,9 @@ function filasNorma(n) {
     ${n.notas ? `<details><summary>Vacíos, excepciones y discrepancias</summary>${esc(n.notas)}</details>` : ""}`;
 }
 
-function mostrarFicha(f) {
-  $("marca").classList.toggle("on", !!f.marca);
-  let h = `<h2>${esc(f.comuna || "Sin comuna")}</h2><div class="meta">${esc(f.region || "")}${f.tiempo_ms != null ? ` · ${f.tiempo_ms} ms` : ""}</div>`;
+function mostrarFicha(f, previo = "", marca = false) {
+  $("marca").classList.toggle("on", !!f.marca || marca);
+  let h = `<h2>${esc(f.comuna || "Sin comuna")}</h2><div class="meta">${esc(f.region || "")}${f.tiempo_ms != null ? ` · ${f.tiempo_ms} ms` : ""}</div>` + previo;
   if (f.cobertura !== "completa" && f.motivo) h += `<p class="borrador" style="margin-top:8px">${esc(f.motivo)}</p>`;
   if (!f.particion.length) { $("panel").innerHTML = h + `<p class="vacio">Sin cobertura en este punto.</p>`; return; }
   h += "<h3>Situación normativa</h3>";
@@ -326,6 +352,143 @@ function mostrarFicha(f) {
   h += `<p class="meta" style="margin-top:14px">${esc(f.aviso)}</p>`;
   $("panel").innerHTML = h;
 }
+
+// ── Dibujar un predio → ficha del polígono y volumen en 3D (existente sólido, envolvente posible translúcida) ───────
+const FUENTES_PISOS = {overture_num_floors: "Overture (num_floors)", overture_height: "Overture (height)", mixto: "mezcla de fuentes",
+  estimado: "estimado: 1 piso por edificio, cota inferior"};
+const dib = {activo: false, pts: [], cursor: null};
+let ultimo = null;                       // {v: volumen, f: ficha del polígono, idx: escenario mostrado}
+const ptsGJ = (a) => ({type: "FeatureCollection", features: a});
+
+function dibujoRefrescar() {
+  const p = dib.pts, c = dib.cursor, pc = c ? [...p, c] : p, f = [];
+  if (pc.length >= 3) f.push({type: "Feature", properties: {}, geometry: {type: "Polygon", coordinates: [[...pc, pc[0]]]}});
+  if (pc.length >= 2) f.push({type: "Feature", properties: {}, geometry: {type: "LineString", coordinates: pc.length >= 3 ? [...pc, pc[0]] : pc}});
+  p.forEach((q) => f.push({type: "Feature", properties: {}, geometry: {type: "Point", coordinates: q}}));
+  mapa.getSource("dibujo").setData(ptsGJ(f));
+  const b = $("bdibujar");
+  b.textContent = p.length >= 3 ? "Terminar predio" : "Cancelar dibujo";
+}
+function dibujoIniciar() {
+  limpiarPredio();
+  dib.activo = true; dib.pts = []; dib.cursor = null; window.__dibujando = true;
+  mapa.doubleClickZoom.disable(); document.body.classList.add("dibujando");
+  $("bdibujar").setAttribute("aria-pressed", "true"); $("bdibujar").textContent = "Cancelar dibujo";
+  marcador && marcador.remove();
+  estado("Marca los vértices del predio con clics. Doble clic, Enter o «Terminar predio» para cerrarlo; Esc cancela; Retroceso borra el último.");
+}
+function dibujoSalir() {
+  dib.activo = false; dib.pts = []; dib.cursor = null; window.__dibujando = false;
+  mapa.doubleClickZoom.enable(); document.body.classList.remove("dibujando");
+  mapa.getSource("dibujo").setData(vacio);
+  $("bdibujar").setAttribute("aria-pressed", "false"); $("bdibujar").textContent = "Dibujar predio";
+}
+function limpiarPredio() {
+  ultimo = null;
+  for (const s of ["predio", "existente", "envolvente"]) mapa.getSource(s).setData(vacio);
+  mapa.setFilter("edificios", null); $("blimpiar").hidden = true;
+}
+$("bdibujar").addEventListener("click", () => {
+  if (!dib.activo) return dibujoIniciar();
+  if (dib.pts.length >= 3) dibujoTerminar(); else { dibujoSalir(); estado("Dibujo cancelado."); }
+});
+$("blimpiar").addEventListener("click", () => {
+  limpiarPredio(); $("marca").classList.remove("on");
+  $("panel").innerHTML = "<h2>Ficha normativa</h2><p class='vacio'>Haz clic en el mapa. El resultado es preliminar y referencial.</p>";
+  estado("Predio borrado.");
+});
+mapa.on("click", (ev) => {
+  if (!dib.activo) return;
+  const q = [ev.lngLat.lng, ev.lngLat.lat], ult = dib.pts[dib.pts.length - 1];
+  if (ult) { const a = mapa.project(ult); if (Math.hypot(a.x - ev.point.x, a.y - ev.point.y) < 4) return; }   // 2.º clic de un doble clic
+  if (dib.pts.length >= 3) { const a = mapa.project(dib.pts[0]); if (Math.hypot(a.x - ev.point.x, a.y - ev.point.y) < 9) return dibujoTerminar(); }
+  dib.pts.push(q); dibujoRefrescar();
+  estado(`${dib.pts.length} vértices. Doble clic, Enter o «Terminar predio» para cerrarlo.`);
+});
+mapa.on("mousemove", (ev) => { if (dib.activo && dib.pts.length) { dib.cursor = [ev.lngLat.lng, ev.lngLat.lat]; dibujoRefrescar(); } });
+mapa.on("dblclick", () => { if (dib.activo && dib.pts.length >= 3) dibujoTerminar(); });
+document.addEventListener("keydown", (e) => {
+  if (!dib.activo || /INPUT|TEXTAREA/.test((e.target && e.target.tagName) || "")) return;
+  if (e.key === "Enter" && dib.pts.length >= 3) dibujoTerminar();
+  else if (e.key === "Escape") { dibujoSalir(); estado("Dibujo cancelado."); }
+  else if (e.key === "Backspace") { e.preventDefault(); dib.pts.pop(); dibujoRefrescar(); }
+});
+
+async function dibujoTerminar() {
+  const ring = [...dib.pts, dib.pts[0]], geo = {type: "Polygon", coordinates: [ring]};
+  dibujoSalir();
+  mapa.getSource("predio").setData({type: "Feature", properties: {}, geometry: geo}); $("blimpiar").hidden = false;
+  $("panel").innerHTML = "<h2>Predio dibujado</h2><p class='vacio'>Calculando la ficha y el volumen…</p>";
+  const pedir = (ruta) => fetch(ruta, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(geo)});
+  try {
+    const [rv, rf] = await Promise.all([pedir("/api/volumen"), pedir("/api/ficha")]);
+    if (!rv.ok) throw new Error((await rv.json()).detail || ("HTTP " + rv.status));
+    const v = await rv.json(), f = rf.ok ? await rf.json() : null;
+    ultimo = {v, f, idx: Math.max(0, v.escenarios.findIndex((e) => e.estado === "ok"))};
+    mostrarPredio(true);
+    estado(`Predio de ${fmt(v.existente.sup_terreno_m2)} m² · zona ${v.zona.zona || v.zona.clase}.`);
+  } catch (e) {
+    $("panel").innerHTML = `<h2>Predio dibujado</h2><p class="borrador">${esc(e.message)}</p><p class="vacio">Dibuja el predio dentro de una zona con cobertura (máximo 50 ha).</p>`;
+    estado("No se pudo calcular el volumen: " + e.message, true);
+  }
+}
+
+function mostrarPredio(enfocar = false) {
+  const {v, f, idx} = ultimo;
+  const html = volumenHTML(v, idx);
+  if (f) mostrarFicha(f, html, !!v.marca);
+  else { $("panel").innerHTML = `<h2>Predio dibujado</h2>${html}`; $("marca").classList.toggle("on", !!v.marca); }
+  dibujarVolumen(v, idx, enfocar);
+}
+
+function dibujarVolumen(v, idx, enfocar) {
+  const ex = v.existente.edificios || [], esc_ = v.escenarios[idx];
+  mapa.getSource("existente").setData(ptsGJ(ex));
+  const ids = ex.map((x) => x.properties.id);
+  mapa.setFilter("edificios", ids.length ? ["!", ["in", ["get", "id"], ["literal", ids]]] : null);   // evita el doble dibujo
+  mapa.getSource("envolvente").setData(esc_ && esc_.envolvente && esc_.estado === "ok"
+    ? ptsGJ([{type: "Feature", properties: {altura: esc_.altura_envolvente_m}, geometry: esc_.envolvente}]) : vacio);
+  if (enfocar) {
+    const xs = ultimoPredio().map((q) => q[0]), ys = ultimoPredio().map((q) => q[1]);
+    $("b3d").setAttribute("aria-pressed", "true");
+    mapa.fitBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]],
+      {padding: {top: 90, bottom: 90, left: 300, right: 70}, maxZoom: 19.2, pitch: 58, bearing: -20, duration: 900});
+  }
+}
+const ultimoPredio = () => mapa.getSource("predio")._data.geometry.coordinates[0];
+
+function volumenHTML(v, idx) {
+  const ex = v.existente, e = v.escenarios[idx];
+  let h = `<h3>Volumen del predio</h3><div class="meta">${fmt(ex.sup_terreno_m2)} m² · zona ${esc(v.zona.zona || v.zona.clase)} (${esc(v.zona.ipt || "")})</div>`;
+  h += `<div style="margin-top:6px"><b>Existente</b> <span class="meta">${fmt(ex.n_edificios)} edificio${ex.n_edificios === 1 ? "" : "s"} · huella ${fmt(ex.huella_m2, 1)} m² · ${fmt(ex.m2_existente, 1)} m² construidos</span><br>
+    <span class="meta">Fuente: huellas de Overture (ODbL)${ex.fuente_pisos ? `; pisos: ${esc(FUENTES_PISOS[ex.fuente_pisos] || ex.fuente_pisos)} (confianza ${esc(ex.confianza_pisos)})` : ""}.</span></div>`;
+  if (v.escenarios.length > 1) {
+    h += `<h3>Sistema de agrupamiento</h3><div class="escenarios">` + v.escenarios.map((s, i) =>
+      `<label><input type="radio" name="esc" value="${i}"${i === idx ? " checked" : ""}> ${esc(s.agrupamiento || "Norma")} ${s.estado !== "ok" ? `<span class="meta">(${esc(s.estado)})</span>` : ""}</label>`).join("") + "</div>";
+  }
+  if (!e) h += `<p class="vacio" style="margin-top:8px">${esc((v.simplificaciones.find((s) => /no tiene normas/.test(s))) || "La zona no tiene normas cargadas.")}</p>`;
+  else if (e.estado !== "ok") h += `<p class="borrador" style="margin-top:8px">${esc(e.motivo || e.estado)}</p>`;
+  else {
+    const chip = `<span class="chip ${esc(e.estado_iov)}">${esc({holgura: "holgura", al_limite: "al límite", excede: "excede", sin_dato: "sin dato"}[e.estado_iov] || e.estado_iov)}</span>`;
+    h += `<div class="kpis">
+      <div class="kpi"><b>${fmt(e.m2_max, 0)} m²</b><span>construibles (máximo)</span></div>
+      <div class="kpi"><b>${e.remanente_m2 == null ? "—" : fmt(e.remanente_m2, 0) + " m²"}</b><span>remanente</span></div>
+      <div class="kpi"><b>${e.iov == null ? "—" : fmt(e.iov, 2)} ${chip}</b><span>IOV (existente / máximo)</span></div>
+      <div class="kpi"><b>${esc(e.pisos_max)} pisos · ${fmt(e.altura_envolvente_m, 1)} m</b><span>altura de la envolvente</span></div></div>
+      <div class="meta">V máx. ${fmt(e.v_max_m3, 0)} m³ · V posible ${fmt(e.v_opt_m3, 0)} m³ · eficiencia ${e.eficiencia == null ? "—" : fmt(e.eficiencia, 2)} · limita: ${esc(e.limita)} · retranqueo ${fmt(e.retranqueo_m, 1)} m</div>
+      <div class="meta">Norma: ocupación ${esc(e.ocupacion_max)} · constructibilidad ${esc(e.constructibilidad_max)} · altura ${esc(e.altura_max_m)} m
+      · <span class="borrador">${esc(e.normas_estado || "BORRADOR")}</span> ${esc(e.articulo_fuente || "")}</div>`;
+  }
+  const simp = [...v.simplificaciones, ...((e && e.simplificaciones) || [])];
+  if (simp.length) h += `<details open><summary>Simplificaciones y supuestos</summary><ul class="simp">${simp.map((s) => `<li>${esc(s)}</li>`).join("")}</ul></details>`;
+  h += `<div class="leyenda3d meta" style="margin-top:6px"><i style="background:#3d4552"></i>Existente (sólido) &nbsp; <i style="background:#12a38a;opacity:.5"></i>Envolvente posible, fase 1 (sin rasantes)</div>`;
+  if (v.marca) h += `<p class="borrador" style="margin-top:8px">${esc(v.marca)}: las normas no están validadas por el arquitecto.</p>`;
+  return h;
+}
+$("panel").addEventListener("change", (e) => {
+  if (!ultimo || !e.target || e.target.name !== "esc") return;
+  ultimo.idx = Number(e.target.value); mostrarPredio(false);
+});
 
 // ── Lámina PDF de la comuna al centro del mapa (sig/) ───────────────────────────────────────────────────────────────
 $("blamina").addEventListener("click", async () => {

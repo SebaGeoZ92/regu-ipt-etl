@@ -820,6 +820,11 @@ def test_app_teselas():
         for tema in ("normativa", "ocupacion", "edificios"):
             assert f'data-opacidad="{tema}"' in r.text, tema
         assert "regu.opacidad" in r.text and "localStorage" in r.text and "catch (e)" in r.text, "recuerda con try/catch"
+        # A5: dibujo de predio, volumen 3D (existente sólido y envolvente translúcida) y marca BORRADOR
+        for clave in ('id="bdibujar"', 'id="blimpiar"', '"/api/volumen"', '"/api/ficha"', 'id: "existente3d"', 'id: "envolvente3d"',
+                      '"fill-extrusion-opacity": 0.38', "Envolvente posible, fase 1 (sin rasantes)", "Simplificaciones y supuestos",
+                      "uso interno", "mapa.doubleClickZoom.disable()"):
+            assert clave in r.text, clave
         for f in ("maplibre-gl.js", "maplibre-gl.css", "pmtiles.js"):
             assert c.get(f"/static/vendor/{f}").status_code == 200, f
         assert c.get("/static/../main.py").status_code in (400, 404)
