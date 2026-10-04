@@ -140,3 +140,9 @@ pri_subclase:
   E: "(EXTENSION|\\bZEU|\\bAEU|URBANIZABLE)"
   R: "(RURAL|SILVO|AGRO|AGRIC|PROTECCION|PRESERVACION|\\bZR|\\bAR\\b|INTERES|VALOR NATURAL|RESTRICCION)"
   U: "(URBAN|CONSOLIDAD|\\bZU|\\bAU\\b)"
+
+# Volumen (Regu Suelo, docs/VOLUMENES.md). La altura de piso de referencia NO es una norma: es un parámetro del modelo.
+# 3,5 m es el módulo de piso que usa la propia ordenanza del PRC de Temuco en el Art. 16 (nota *5). Una norma de zona
+# que traiga altura_piso_ref_m en normas/normas_zona.csv la reemplaza. Confirmar con el arquitecto.
+volumen:
+  altura_piso_ref_m: 3.5

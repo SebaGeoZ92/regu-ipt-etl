@@ -22,6 +22,7 @@ class Ajustes:
     f_nombre: str = "Comuna"
     f_region: str = "Region"
     registrar: bool = True                 # anotar la consulta en data/demanda (sin coordenadas)
+    altura_piso_ref_m: float = 3.5         # parámetro del modelo (NO es norma): ver config.yaml, bloque `volumen`
 
     @classmethod
     def desde_cfg(cls, cfg: dict, ruta: Callable[[dict, str], Path], gpkg: Path | None = None) -> "Ajustes":
@@ -32,4 +33,5 @@ class Ajustes:
         c = cfg["comunas"]
         return cls(gpkg=Path(g), dir_footprints=ruta(cfg, "footprints"), normas=ruta(cfg, "normas"), dir_out=out,
                    dir_demanda=ruta(cfg, "demanda"), comunas=ruta(cfg, "comunas"),
-                   f_cut=c["field_cut"], f_nombre=c["field_nombre"], f_region=c["field_region"])
+                   f_cut=c["field_cut"], f_nombre=c["field_nombre"], f_region=c["field_region"],
+                   altura_piso_ref_m=float((cfg.get("volumen") or {}).get("altura_piso_ref_m", 3.5)))

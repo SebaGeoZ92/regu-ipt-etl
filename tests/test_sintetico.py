@@ -619,6 +619,16 @@ def _app_fixture(tmp: Path):
     com.to_file(tmp / "comunas.gpkg", driver="GPKG")
     fp = tmp / "fp"
     fp.mkdir()
+    # Footprints (formato de etl/footprints.py): A cae dentro del predio de la prueba de volumen y tiene num_floors; B no
+    ed = gpd.GeoDataFrame({
+        "id": ["A", "B", "C"], "cut": ["09101"] * 3, "comuna": ["Temuco"] * 3, "region": ["Región de La Araucanía"] * 3,
+        "height": [np.nan, np.nan, 12.0], "num_floors": [3.0, np.nan, np.nan], "class": [None] * 3, "subtype": [None] * 3,
+        "fuente": ["microsoft", "osm", "google"], "area_m2": [56.0, 100.0, 80.0],
+    }, geometry=[box(-72.59495, -38.73490, -72.59486, -38.73483), box(-72.5990, -38.7390, -72.5989, -38.7389),
+                 box(-72.5880, -38.7350, -72.5879, -38.7349)], crs=4326)
+    ed.to_parquet(fp / "region_de_la_araucania.parquet")
+    (fp / "region_de_la_araucania.manifest.json").write_text(
+        json.dumps({"region": "Región de La Araucanía", "completa": True}), encoding="utf-8")
     return Ajustes(gpkg=gpkg, dir_footprints=fp, normas=normas, dir_out=out, dir_demanda=tmp / "demanda",
                    comunas=tmp / "comunas.gpkg")
 
@@ -656,6 +666,102 @@ def test_app_sintetico():
         log = (Path(d) / "demanda" / "consultas.jsonl").read_text(encoding="utf-8")
         assert "-72.5" not in log and "-38.7" not in log, "el registro de demanda no lleva coordenadas"
     print("  app: OK")
+
+
+def _predio_4326(ancho=20.0, alto=30.0):
+    """Predio rectangular de ancho × alto metros, construido en ESRI:102033 y llevado a EPSG:4326."""
+    return gpd.GeoSeries([box(0, 0, ancho, alto)], crs="ESRI:102033").to_crs(4326).iloc[0]
+
+
+def test_envolvente_sintetico():
+    """Fase 1 de volumen, tres casos a mano (docs/VOLUMEN_PILOTO.md), más retranqueo, sin_dato, excede y edificio compartido."""
+    from etl import envolvente as E
+    pred = _predio_4326()                       # 20 × 30 = 600 m²
+    n = lambda **k: {"agrupamiento": "Aislado", "estado": "BORRADOR", "ocupacion_max": "0.4", "constructibilidad_max": "3",  # noqa: E731
+                     "altura_max_m": "14", **{a: str(b) for a, b in k.items()}}
+    ap = lambda v: abs(v) < 0.01  # noqa: E731
+    e1 = E.posible(pred, n(), 3.5)              # 14 m / 3,5 = 4 pisos; 0,4 × 600 = 240; limita ocupación × altura
+    assert e1["pisos_max"] == 4 and abs(e1["m2_max"] - 960) < 960 * 0.01 and e1["limita"] == "ocupación × altura", e1
+    e2 = E.posible(pred, n(ocupacion_max=0.6, constructibilidad_max=1), 3.5)   # min(360 × 4, 1 × 600) = 600
+    assert abs(e2["m2_max"] - 600) < 6 and e2["limita"] == "constructibilidad", e2
+    e3 = E.posible(pred, n(ocupacion_max=0.5, altura_max_m=7), 3.5)            # 2 pisos: 300 × 2 = 600 (limita la altura)
+    assert e3["pisos_max"] == 2 and abs(e3["m2_max"] - 600) < 6 and abs(e3["v_max_m3"] - 0.5 * 600 * 7) < 21, e3
+    assert e1["v_max_m3"] >= e1["v_opt_m3"] and e1["eficiencia"] <= 1 and e1["estado"] == "ok"
+    e4 = E.posible(pred, n(ocupacion_max=0.5, antejardin_m="5.0 frente a vías colectoras; 3.0 frente a vías locales"), 3.5)
+    assert e4["retranqueo_m"] == 3.0 and abs(e4["area_base_m2"] - 14 * 24) < 4 and abs(e4["area_primer_piso_m2"] - 300) < 3, e4
+    e5 = E.posible(pred, n(ocupacion_max=0.9, antejardin_m="3.0", distanciamiento_m="4.0"), 3.5)
+    assert e5["retranqueo_m"] == 4.0 and abs(e5["area_base_m2"] - 12 * 22) < 4 and any("Retranqueo uniforme" in s for s in e5["simplificaciones"])
+    assert E.posible(pred, n(altura_max_m=""), 3.5)["estado"] == "sin_dato"
+    chica = E.posible(_predio_4326(5, 5), n(antejardin_m="3.0"), 3.5)
+    assert chica["envolvente"] is None and chica["estado"] == "sin_base" and "no es aplicable" in chica["motivo"], "sin base edificable"
+    assert E.comparar({"m2_existente": 0.0}, chica)["estado_iov"] == "sin_dato"
+    assert any("no es norma" in s for s in e1["simplificaciones"]) and E.posible(pred, n(altura_piso_ref_m="3"), 3.5)["altura_piso_ref_m"] == 3.0
+    # existente: A (3 pisos, 100 % dentro), B (70 % dentro, sin dato) cuenta; C (30 % dentro) no cuenta; D (100 % dentro) con height
+    def b(x0, y0, w, h): return gpd.GeoSeries([box(x0, y0, x0 + w, y0 + h)], crs="ESRI:102033").to_crs(4326).iloc[0]
+    ed = gpd.GeoDataFrame({"id": list("ABCD"), "height": [np.nan, np.nan, np.nan, 14.0], "num_floors": [3.0, np.nan, np.nan, np.nan]},
+                          geometry=[b(2, 2, 10, 10), b(14, 20, 10, 10), b(17, 2, 10, 10), b(2, 15, 5, 5)], crs=4326)
+    ex = E.existente(pred, ed, 3.5)
+    assert ex["n_edificios"] == 3 and abs(ex["huella_m2"] - (100 + 100 + 25)) < 3, ex
+    assert abs(ex["m2_existente"] - (100 * 3 + 100 * 1 + 25 * 4)) < 5 and ex["fuente_pisos"] == "mixto" and ex["cota_inferior"], ex
+    assert abs(ex["sup_terreno_m2"] - 600) < 6
+    solo = E.existente(pred, ed.iloc[[1]].assign(num_floors=np.nan), 3.5)       # una sola fuente: estimado → cota inferior, baja
+    assert solo["fuente_pisos"] == "estimado" and solo["cota_inferior"] and solo["confianza_pisos"] == "baja", solo
+    vacio = E.existente(pred, ed.iloc[[2]], 3.5)                                # C: 30 % dentro → no cuenta: sitio sin edificios
+    assert vacio["n_edificios"] == 0 and vacio["m2_existente"] == 0 and vacio["fuente_pisos"] is None and not vacio["cota_inferior"]
+    assert E.comparar(vacio, e1)["iov"] == 0 and E.comparar(vacio, e1)["estado_iov"] == "holgura"
+    # excede: lo existente (500 m²) supera lo posible (e1: 960 → no excede) y un caso con m2_max chico sí
+    chico = E.posible(pred, n(ocupacion_max=0.2, constructibilidad_max=0.5, altura_max_m=3.5), 3.5)   # 1 piso: 120 m² (< 300)
+    assert abs(chico["m2_max"] - 120) < 2
+    c = E.comparar(ex, chico)
+    assert c["estado_iov"] == "excede" and c["iov"] > 1 and c["remanente_m2"] < 0, c
+    assert E.comparar(ex, e1)["estado_iov"] == "holgura" and E.comparar(ex, E.posible(pred, n(altura_max_m=""), 3.5))["estado_iov"] == "sin_dato"
+    assert [E.estado_iov(x) for x in (0.79, 0.8, 1.0, 1.01)] == ["holgura", "al_limite", "al_limite", "excede"]
+    assert E.numeros("5,0 m; 3.5") == [5.0, 3.5]
+    print("  envolvente: OK")
+
+
+def test_app_edificios_volumen():
+    """A2 de Regu Suelo: /api/edificios (DuckDB sobre un parquet sintético) y /api/volumen con normas BORRADOR."""
+    from fastapi.testclient import TestClient
+    from app.main import crear_app
+    with tempfile.TemporaryDirectory() as d:
+        a = _app_fixture(Path(d))
+        a.registrar = False
+        c = TestClient(crear_app(a))
+        r = c.get("/api/edificios", params={"bbox": "-72.600,-38.745,-72.590,-38.730", "zoom": 17}).json()
+        ids = {f["properties"]["id"]: f["properties"] for f in r["features"]}
+        assert set(ids) == {"A", "B"} and not r["recortado"] and "Overture" in r["atribucion"], r
+        assert ids["A"]["altura_est"] == 10.5 and ids["A"]["altura_fuente"] == "overture_num_floors" and ids["A"]["fuente"] == "microsoft"
+        assert ids["B"]["altura_est"] == 3.5 and ids["B"]["altura_fuente"] == "estimado"
+        c2 = c.get("/api/edificios", params={"bbox": "-72.60,-38.745,-72.58,-38.73"}).json()
+        assert {f["properties"]["id"]: f["properties"] for f in c2["features"]}["C"]["altura_est"] == 12.0, "usa height de Overture"
+        r1 = c.get("/api/edificios", params={"bbox": "-72.600,-38.745,-72.590,-38.730", "limite": 1}).json()
+        assert r1["recortado"] and len(r1["features"]) == 1 and "acércate" in r1["aviso"]
+        grande = c.get("/api/edificios", params={"bbox": "-73,-39,-72,-38"}).json()
+        assert grande["features"] == [] and "acércate" in grande["aviso"]
+        assert c.get("/api/edificios", params={"bbox": "1,2,3"}).status_code == 422
+        assert c.get("/api/edificios", params={"bbox": "-72.6,-38.7,-72.7,-38.8"}).status_code == 422
+        predio = {"type": "Polygon", "coordinates": [[[-72.5950, -38.7350], [-72.59477, -38.7350], [-72.59477, -38.73473],
+                                                        [-72.5950, -38.73473], [-72.5950, -38.7350]]]}
+        v = c.post("/api/volumen", json=predio).json()
+        assert v["zona"]["zona"] == "ZH2" and v["marca"] == "BORRADOR · uso interno" and "Overture" in v["atribucion"]
+        assert v["existente"]["n_edificios"] == 1 and v["existente"]["fuente_pisos"] == "overture_num_floors"
+        assert abs(v["existente"]["huella_m2"] - 61) < 3 and abs(v["existente"]["m2_existente"] - 3 * v["existente"]["huella_m2"]) < 1 and abs(v["existente"]["sup_terreno_m2"] - 600) < 40
+        e = v["escenarios"][0]
+        assert e["normas_estado"] == "BORRADOR" and e["pisos_max"] == 5 and e["limita"] == "constructibilidad", e
+        assert abs(e["m2_max"] - 1.5 * v["existente"]["sup_terreno_m2"]) < 1 and e["v_max_m3"] >= e["v_opt_m3"]
+        assert e["envolvente"]["type"] == "Polygon" and e["articulo_fuente"] == "Art. 16, tabla B 2"
+        assert e["estado_iov"] == "holgura" and 0 < e["iov"] < 0.8 and e["remanente_m2"] > 0
+        assert any("no es norma" in s for s in e["simplificaciones"]), "declara el parámetro del modelo"
+        assert "brecha" not in str(v).lower() and "propietario" not in str(v).lower()
+        sin_norma = c.post("/api/volumen", json={"type": "Polygon", "coordinates": [[[-72.585, -38.735], [-72.5848, -38.735],
+                                                  [-72.5848, -38.7348], [-72.585, -38.7348], [-72.585, -38.735]]]}).json()   # ZHR5
+        assert sin_norma["escenarios"] == [] and sin_norma["marca"] is None and any("no tiene normas" in s for s in sin_norma["simplificaciones"])
+        assert c.post("/api/volumen", json={"type": "Point", "coordinates": [-72.595, -38.735]}).status_code == 422
+        assert c.post("/api/volumen", json={"type": "Polygon", "coordinates": [[[-70, -33], [-70.001, -33], [-70.001, -33.001], [-70, -33]]]}).status_code == 422
+        enorme = {"type": "Polygon", "coordinates": [[[-72.60, -38.74], [-72.58, -38.74], [-72.58, -38.73], [-72.60, -38.73], [-72.60, -38.74]]]}
+        assert c.post("/api/volumen", json=enorme).status_code == 422
+    print("  app edificios/volumen: OK")
 
 
 def test_rescate_geos():
@@ -733,6 +839,8 @@ if __name__ == "__main__":
     test_ocupacion_sintetico()
     test_vcalc_sintetico()
     test_app_sintetico()
+    test_envolvente_sintetico()
+    test_app_edificios_volumen()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
