@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Regu Suelo · local</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="/static/vendor/maplibre-gl.css">
 <style>
   /* Todo local: sin CDN. Las fuentes del sistema bastan; no se carga ninguna tipografía de internet. */
@@ -34,11 +35,19 @@
   #capas { position: absolute; top: 10px; left: 10px; z-index: 2; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 250px; }
   #capas h2 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
   #capas label { display: flex; align-items: center; gap: 6px; margin: 3px 0; cursor: pointer; }
+  #capas h2.sub { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+  #capas .fondo label { margin: 1px 0; }
+  .opacidad { display: flex; align-items: center; gap: 6px; margin: 0 0 4px 22px; font-size: 11px; color: var(--muted); }
+  .opacidad input[type=range] { flex: 1; min-width: 0; height: 14px; accent-color: var(--accent); }
+  .opacidad output { width: 3.2em; text-align: right; font-family: var(--f-mono); }
+  #atrib { position: absolute; right: 52px; bottom: 6px; z-index: 2; max-width: 52%; background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; font-size: 11px; color: var(--muted); display: none; }
+  #atrib.on { display: block; }
   .leyenda { margin: 4px 0 6px 22px; font-size: 12px; color: var(--muted); display: none; }
   .leyenda.on { display: block; }
   .leyenda i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 5px; vertical-align: -2px; border: 1px solid rgba(0,0,0,.25); }
   .leyenda div { white-space: nowrap; }
-  #estado { position: absolute; left: 10px; bottom: 28px; z-index: 2; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; color: var(--muted); max-width: 70%; }
+  #estado { position: absolute; left: 10px; bottom: 44px; z-index: 2; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; color: var(--muted); max-width: 70%; }
   #estado.alerta { background: var(--warn-bg); color: var(--warn-fg); }
   #acciones { position: absolute; top: 10px; right: 10px; z-index: 2; display: flex; gap: 6px; }
   .boton { background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font: inherit; cursor: pointer; }
@@ -80,17 +89,23 @@
     <div id="capas">
       <h2>Capas</h2>
       <label><input type="checkbox" data-capa="normativa" checked> Normativa</label>
+      <div class="opacidad"><input type="range" min="0" max="100" step="1" data-opacidad="normativa" aria-label="Transparencia de la normativa"><output></output></div>
       <div class="leyenda on" id="ley-normativa"></div>
       <label><input type="checkbox" data-capa="ocupacion"> Ocupación por zona</label>
+      <div class="opacidad"><input type="range" min="0" max="100" step="1" data-opacidad="ocupacion" aria-label="Transparencia de la ocupación"><output></output></div>
       <div class="leyenda" id="ley-ocupacion"></div>
       <label><input type="checkbox" data-capa="edificios" checked> Edificios (3D desde zoom 15)</label>
+      <div class="opacidad"><input type="range" min="0" max="100" step="1" data-opacidad="edificios" aria-label="Transparencia de los edificios"><output></output></div>
       <label><input type="checkbox" data-capa="comunas" checked> Límites comunales</label>
+      <h2 class="sub">Mapa base</h2>
+      <div class="fondo" id="fondos" role="radiogroup" aria-label="Mapa base"></div>
     </div>
     <div id="acciones">
       <button class="boton" id="blamina" title="Descarga la lámina comunal en PDF (A3) de la comuna al centro del mapa">Lámina PDF</button>
       <button class="boton" id="b3d" aria-pressed="false" title="Inclinar el mapa para ver los edificios en 3D">3D</button>
     </div>
     <div id="estado">Haz clic en el mapa para ver la ficha de un punto.</div>
+    <div id="atrib" aria-label="Atribución del mapa base"></div>
   </div>
 
   <aside id="panel" aria-live="polite">
@@ -134,13 +149,44 @@ const tesela = (t) => "pmtiles://" + location.origin + "/tiles/" + t + ".pmtiles
 const colorClase = ["match", ["get", "clase"], ...Object.entries(CLASES).flatMap(([k, v]) => [k, v[0]]), "#999999"];
 const vacio = {type: "FeatureCollection", features: []};
 
+// Mapas base: "ninguno" no pide nada a internet (trabajo sin conexión). OSM pasa por el servidor local (User-Agent
+// identificable y caché en disco). Esri y EOX se piden directo desde el navegador, sin guardarlos.
+const FONDOS = {
+  ninguno: {nombre: "Sin fondo (sin conexión)", atrib: ""},
+  osm: {nombre: "OpenStreetMap", tiles: [location.origin + "/basemap/osm/{z}/{x}/{y}.png"], maxzoom: 19,
+    atrib: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors'},
+  esri: {nombre: "Satélite · Esri World Imagery", maxzoom: 19,
+    tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+    atrib: 'Imágenes: Esri, Maxar, Earthstar Geographics y la comunidad de usuarios de GIS · <a href="https://www.esri.com/en-us/legal/terms/full-master-agreement" target="_blank" rel="noopener">términos de Esri</a>'},
+  eox: {nombre: "Satélite · Sentinel-2 cloudless 2016 (EOX)", maxzoom: 13,
+    tiles: ["https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg"],
+    atrib: '<a href="https://cloudless.eox.at" target="_blank" rel="noopener">EOxCloudless</a> © EOX IT Services GmbH (contiene datos Copernicus Sentinel modificados, 2016) · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>'}
+};
+const fuentesFondo = Object.fromEntries(Object.entries(FONDOS).filter(([, f]) => f.tiles).map(([k, f]) =>
+  ["base_" + k, {type: "raster", tiles: f.tiles, tileSize: 256, maxzoom: f.maxzoom}]));
+const capasFondo = Object.keys(fuentesFondo).map((id) => ({id, type: "raster", source: id, layout: {visibility: "none"}}));
+
+// Transparencia por capa temática: valor inicial y cómo se aplica. Se recuerda en el navegador (localStorage).
+const OPACIDAD = {
+  normativa: {def: 72, aplicar: (v) => { mapa.setPaintProperty("normativa", "fill-opacity", v); mapa.setPaintProperty("riesgo", "fill-opacity", Math.min(1, v * 1.25)); }},
+  ocupacion: {def: 88, aplicar: (v) => mapa.setPaintProperty("ocupacion", "fill-opacity", v)},
+  edificios: {def: 92, aplicar: (v) => mapa.setPaintProperty("edificios", "fill-extrusion-opacity", v)}
+};
+const guardado = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* sin almacenamiento: no se recuerda */ } };
+const opacidades = Object.assign(Object.fromEntries(Object.entries(OPACIDAD).map(([k, o]) => [k, o.def])), guardado("regu.opacidad") || {});
+let fondoActual = FONDOS[guardado("regu.fondo")] ? guardado("regu.fondo") : "ninguno";
+
 const mapa = new maplibregl.Map({
   container: "mapa", center: [-72.59, -38.74], zoom: 11, minZoom: 3, maxZoom: 19, hash: true, maxPitch: 70,
+  attributionControl: false,   // la atribución del mapa base se muestra en #atrib; las de los datos, en el pie
   style: {version: 8, sources: {
+    ...fuentesFondo,
     normativa: {type: "vector", url: tesela("normativa")}, ocupacion: {type: "vector", url: tesela("ocupacion")},
     comunas: {type: "vector", url: tesela("comunas")}, edificios: {type: "geojson", data: vacio}},
   layers: [
     {id: "fondo", type: "background", paint: {"background-color": "#e6e8df"}},
+    ...capasFondo,
     {id: "normativa", type: "fill", source: "normativa", "source-layer": "ipt", paint: {"fill-color": colorClase, "fill-opacity": 0.72}},
     {id: "riesgo", type: "fill", source: "normativa", "source-layer": "ipt", filter: ["==", ["get", "riesgo"], 1], paint: {"fill-pattern": "achurado", "fill-opacity": 0.9}},
     {id: "ocupacion", type: "fill", source: "ocupacion", "source-layer": "ocupacion", layout: {visibility: "none"}, paint: {"fill-color": ["get", "color"], "fill-opacity": 0.88}},
@@ -181,10 +227,35 @@ $("b3d").addEventListener("click", () => {
   mapa.easeTo({pitch: on ? 55 : 0, bearing: on ? -20 : 0, duration: 600});
 });
 
+// ── Selector de mapa base y atribución visible ──────────────────────────────────────────────────────────────────────
+function elegirFondo(id, avisar = true) {
+  fondoActual = id; guardar("regu.fondo", id);
+  for (const k of Object.keys(fuentesFondo)) mapa.setLayoutProperty(k, "visibility", k === "base_" + id ? "visible" : "none");
+  const a = $("atrib"); a.innerHTML = FONDOS[id].atrib; a.classList.toggle("on", !!FONDOS[id].atrib);
+  if (avisar && id === "ninguno") estado("Sin mapa base: no se pide nada a internet.");
+}
+$("fondos").innerHTML = Object.entries(FONDOS).map(([k, f]) =>
+  `<label><input type="radio" name="fondo" value="${k}"${k === fondoActual ? " checked" : ""}> ${esc(f.nombre)}</label>`).join("");
+document.querySelectorAll('#fondos input[name="fondo"]').forEach((i) => i.addEventListener("change", () => { fallaFondo = false; elegirFondo(i.value); }));
+
+// ── Transparencia por capa temática ─────────────────────────────────────────────────────────────────────────────────
+document.querySelectorAll("input[data-opacidad]").forEach((s) => {
+  const k = s.dataset.opacidad, out = s.nextElementSibling;
+  s.value = opacidades[k]; out.textContent = s.value + " %";
+  s.addEventListener("input", () => {
+    opacidades[k] = Number(s.value); out.textContent = s.value + " %";
+    OPACIDAD[k].aplicar(opacidades[k] / 100); guardar("regu.opacidad", opacidades);
+  });
+});
+mapa.on("load", () => { elegirFondo(fondoActual, false); Object.entries(OPACIDAD).forEach(([k, o]) => o.aplicar(opacidades[k] / 100)); });
+
+let fallaFondo = false;
 function estado(txt, alerta = false) { const e = $("estado"); e.textContent = txt; e.classList.toggle("alerta", alerta); }
 mapa.on("error", (e) => {
   const fuente = e.sourceId || (e.error && e.error.sourceId);
-  if (fuente) estado(`Falta la tesela «${fuente}»: corre «python run.py teselas ${fuente}».`, true);
+  if (fuente && fuente.startsWith("base_")) {      // el mapa base no cargó (sin internet o servicio caído): se avisa una sola vez
+    if (!fallaFondo) { fallaFondo = true; estado("El mapa base no cargó (¿sin internet?). Elige «Sin fondo» para trabajar sin conexión.", true); }
+  } else if (fuente) estado(`Falta la tesela «${fuente}»: corre «python run.py teselas ${fuente}».`, true);
 });
 
 // ── Edificios del área visible (DuckDB en el servidor): tope y simplificación según zoom ─────────────────────────────

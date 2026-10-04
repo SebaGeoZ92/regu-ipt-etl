@@ -805,6 +805,17 @@ def test_app_teselas():
         r = c.get("/")
         assert r.status_code == 200 and "text/html" in r.headers["content-type"] and "/static/vendor/maplibre-gl.js" in r.text
         assert "cdn." not in r.text and "unpkg" not in r.text, "la página no debe cargar nada de internet"
+        # mapas base: sin fondo por defecto, OSM por el proxy local, Esri y EOX directos, cada uno con su atribución visible
+        for clave in ('ninguno: {nombre: "Sin fondo', "/basemap/osm/{z}/{x}/{y}.png", "World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                      "s2cloudless_3857/default/g/{z}/{y}/{x}.jpg", "OpenStreetMap</a> contributors", "Esri, Maxar, Earthstar Geographics",
+                      "EOxCloudless", "CC BY 4.0", 'id="atrib"', "attributionControl: false"):
+            assert clave in r.text, clave
+        assert "tile.openstreetmap.org" not in r.text, "OSM solo por el proxy (User-Agent identificable)"
+        assert 'let fondoActual = FONDOS[guardado("regu.fondo")] ? guardado("regu.fondo") : "ninguno"' in r.text
+        # transparencia por capa temática, con valor recordado
+        for tema in ("normativa", "ocupacion", "edificios"):
+            assert f'data-opacidad="{tema}"' in r.text, tema
+        assert "regu.opacidad" in r.text and "localStorage" in r.text and "catch (e)" in r.text, "recuerda con try/catch"
         for f in ("maplibre-gl.js", "maplibre-gl.css", "pmtiles.js"):
             assert c.get(f"/static/vendor/{f}").status_code == 200, f
         assert c.get("/static/../main.py").status_code in (400, 404)
