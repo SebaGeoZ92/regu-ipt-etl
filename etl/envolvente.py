@@ -52,11 +52,12 @@ def existente(predio_4326: BaseGeometry, edificios: gpd.GeoDataFrame, altura_pis
     que caen en más del 50 % dentro del predio. `edificios` ya viene acotado por bbox."""
     p = gpd.GeoSeries([predio_4326], crs=4326).to_crs(CRS_AREA).iloc[0]
     e = edificios.to_crs(CRS_AREA).reset_index(drop=True) if len(edificios) else edificios
-    filas = []
+    filas, feats = [], []
     if len(e):
         g = shapely.make_valid(e.geometry.values)
         a = shapely.area(g)
         frac = shapely.area(shapely.intersection(g, p)) / a.clip(min=1e-9)
+        geo = edificios.to_crs(4326).reset_index(drop=True).geometry
         for i in e.index[frac > UMBRAL_DENTRO]:
             h, nf = e.get("height", pd.Series(dtype=float)).get(i), e.get("num_floors", pd.Series(dtype=float)).get(i)
             if pd.notna(nf):
@@ -65,7 +66,12 @@ def existente(predio_4326: BaseGeometry, edificios: gpd.GeoDataFrame, altura_pis
                 pisos, fuente = max(1, int(round(h / altura_piso_ref_m))), "overture_height"
             else:
                 pisos, fuente = 1, "estimado"
-            filas.append({"id": e["id"].get(i) if "id" in e else i, "huella_m2": float(a[i]), "pisos": pisos, "fuente_pisos": fuente})
+            id_ = e["id"].get(i) if "id" in e else i
+            filas.append({"id": id_, "huella_m2": float(a[i]), "pisos": pisos, "fuente_pisos": fuente})
+            # geometría para dibujar el existente en sólido: altura medida si existe, si no pisos × piso de referencia
+            feats.append({"type": "Feature", "geometry": shapely.geometry.mapping(geo[i]), "properties": {
+                "id": id_, "pisos": pisos, "fuente_pisos": fuente, "huella_m2": round(float(a[i]), 1),
+                "altura_m": round(float(h), 1) if pd.notna(h) else round(pisos * altura_piso_ref_m, 1)}})
     huella = sum(f["huella_m2"] for f in filas)
     m2 = sum(f["huella_m2"] * f["pisos"] for f in filas)
     fuentes = {f["fuente_pisos"] for f in filas}
@@ -79,6 +85,7 @@ def existente(predio_4326: BaseGeometry, edificios: gpd.GeoDataFrame, altura_pis
         "confianza_pisos": ("baja" if estimado else "media") if filas else None,
         "cota_inferior": estimado,
         "sup_terreno_m2": round(float(p.area), 1),
+        "edificios": feats,                 # FeatureCollection.features de los que cuentan (con altura_m), para dibujarlos
     }
 
 

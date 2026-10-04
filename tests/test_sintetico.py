@@ -705,6 +705,9 @@ def test_envolvente_sintetico():
     assert ex["n_edificios"] == 3 and abs(ex["huella_m2"] - (100 + 100 + 25)) < 3, ex
     assert abs(ex["m2_existente"] - (100 * 3 + 100 * 1 + 25 * 4)) < 5 and ex["fuente_pisos"] == "mixto" and ex["cota_inferior"], ex
     assert abs(ex["sup_terreno_m2"] - 600) < 6
+    fe = {f["properties"]["id"]: f["properties"] for f in ex["edificios"]}
+    assert set(fe) == {"A", "B", "D"} and fe["A"]["altura_m"] == 10.5 and fe["D"]["altura_m"] == 14.0 and fe["B"]["altura_m"] == 3.5, fe
+    assert all(f["geometry"]["type"] == "Polygon" and -180 < f["geometry"]["coordinates"][0][0][0] < 180 and abs(f["geometry"]["coordinates"][0][0][1]) < 90 for f in ex["edificios"]), "en grados (EPSG:4326)"
     solo = E.existente(pred, ed.iloc[[1]].assign(num_floors=np.nan), 3.5)       # una sola fuente: estimado → cota inferior, baja
     assert solo["fuente_pisos"] == "estimado" and solo["cota_inferior"] and solo["confianza_pisos"] == "baja", solo
     vacio = E.existente(pred, ed.iloc[[2]], 3.5)                                # C: 30 % dentro → no cuenta: sitio sin edificios
@@ -747,6 +750,7 @@ def test_app_edificios_volumen():
         v = c.post("/api/volumen", json=predio).json()
         assert v["zona"]["zona"] == "ZH2" and v["marca"] == "BORRADOR · uso interno" and "Overture" in v["atribucion"]
         assert v["existente"]["n_edificios"] == 1 and v["existente"]["fuente_pisos"] == "overture_num_floors"
+        assert [f["properties"]["id"] for f in v["existente"]["edificios"]] == ["A"] and v["existente"]["edificios"][0]["properties"]["altura_m"] == 10.5
         assert abs(v["existente"]["huella_m2"] - 61) < 3 and abs(v["existente"]["m2_existente"] - 3 * v["existente"]["huella_m2"]) < 1 and abs(v["existente"]["sup_terreno_m2"] - 600) < 40
         e = v["escenarios"][0]
         assert e["normas_estado"] == "BORRADOR" and e["pisos_max"] == 5 and e["limita"] == "constructibilidad", e
