@@ -444,6 +444,24 @@ def cmd_ocupacion(cfg, args):
     print(json.dumps({k: v for k, v in qa.items() if k != "leyenda"}, ensure_ascii=False, indent=2))
 
 
+def cmd_app(cfg, args):
+    """Regu Suelo local (docs/REGU_SUELO_LOCAL.md): http://localhost:8000. Solo escucha en 127.0.0.1 (no se publica)."""
+    import threading
+    import webbrowser
+    import uvicorn
+    from app.ajustes import Ajustes
+    from app.main import crear_app
+    a = Ajustes.desde_cfg(cfg, ruta, Path(args.gpkg) if args.gpkg else None)
+    faltan = [t for t in ("normativa", "ocupacion", "comunas") if not (a.tiles / f"{t}.pmtiles").exists()]
+    if faltan:
+        log.warning("Faltan teselas (%s): corre `python run.py teselas`. La aplicación abre igual, sin esas capas.", ", ".join(faltan))
+    url = f"http://localhost:{args.puerto}"
+    if not args.no_abrir:
+        threading.Timer(1.5, lambda: webbrowser.open(url)).start()
+    log.info("Regu Suelo local en %s · GPKG %s · Ctrl+C para salir", url, a.gpkg.name)
+    uvicorn.run(crear_app(a), host="127.0.0.1", port=args.puerto, log_level="warning")
+
+
 def cmd_teselas(cfg, args):
     """Teselas PMTiles locales de Regu Suelo en <paths.out>/tiles/: normativa | ocupacion | comunas (por defecto, las tres)."""
     import time
@@ -641,7 +659,7 @@ def cmd_importar_revision(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
-                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints", "ocupacion", "teselas"])
+                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints", "ocupacion", "teselas", "app"])
     ap.add_argument("--release", help="footprints: release de Overture (por defecto, el último)")
     ap.add_argument("--conservar-crudo", action="store_true", help="footprints: no borrar el parquet crudo de Overture")
     ap.add_argument("--cut", help="muestra: CUT(s) centrales separados por coma, p.ej. 09101")
@@ -655,6 +673,8 @@ def main():
     ap.add_argument("--wkt", help="ficha: geometría WKT en EPSG:4326 (punto o polígono)")
     ap.add_argument("--gpkg", help="ficha: GPKG de build (por defecto el más reciente, preferente nacional)")
     ap.add_argument("archivo", nargs="?", help="importar-revision: CSV con 'decision' llena · fuentes: estado|validar")
+    ap.add_argument("--puerto", type=int, default=8000, help="app: puerto local (por defecto 8000)")
+    ap.add_argument("--no-abrir", action="store_true", help="app: no abrir el navegador")
     ap.add_argument("--region", help="regex sobre el nombre de región (ej. ARAUCANIA)")
     ap.add_argument("--refresh", action="store_true", help="vuelve a descargar aunque exista caché")
     ap.add_argument("--capas", help="download: solo estas capas '<servicio>/<id>,...' (ignora el caché)")
@@ -696,6 +716,8 @@ def main():
         cmd_ocupacion(cfg, args)
     if args.cmd == "teselas":
         cmd_teselas(cfg, args)
+    if args.cmd == "app":
+        cmd_app(cfg, args)
 
 
 if __name__ == "__main__":

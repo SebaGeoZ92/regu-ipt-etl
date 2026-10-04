@@ -2,51 +2,296 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Regu Suelo · local</title>
 <link rel="stylesheet" href="/static/vendor/maplibre-gl.css">
 <style>
-  :root { --bg: #f3f4ef; --fg: #1f2622; --line: #d5d9cf; --warn: #6b4a07; --warn-bg: #fbf1d9; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #1b201d; --fg: #e8ebe4; --line: #3a423c; --warn: #f1d58a; --warn-bg: #3a2f10; } }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px system-ui, "Segoe UI", sans-serif; }
-  #mapa { position: absolute; inset: 0; }
-  #capas { position: absolute; top: 10px; left: 10px; z-index: 2; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
-  #capas label { display: block; margin: 2px 0; }
-  #estado { position: absolute; bottom: 10px; left: 10px; z-index: 2; background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+  /* Todo local: sin CDN. Las fuentes del sistema bastan; no se carga ninguna tipografía de internet. */
+  :root {
+    --bg: #f3f4ef; --surface: #fbfbf8; --fg: #1f2622; --muted: #5d665f; --line: #d5d9cf; --accent: #1f5f73;
+    --accent-fg: #fff; --warn-bg: #fbf1d9; --warn-fg: #6b4a07; --riesgo: #b3261e; --map-bg: #e6e8df;
+    --f-ui: "Segoe UI", system-ui, -apple-system, sans-serif; --f-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    --panel-w: 400px;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #1b201d; --surface: #232925; --fg: #e8ebe4; --muted: #a2aba3; --line: #3a423c; --accent: #6fb7cc; --accent-fg: #0f1a1e;
+    --warn-bg: #3a2f10; --warn-fg: #f1d58a; --riesgo: #ff8a80; --map-bg: #2a2f2b; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--f-ui); }
+  #app { position: fixed; inset: 0; display: grid; grid-template-columns: 1fr var(--panel-w); grid-template-rows: auto 1fr auto; }
+  header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .sello { background: var(--warn-bg); color: var(--warn-fg); border-radius: 4px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+  #marca { display: none; }
+  #marca.on { display: inline-block; outline: 2px solid var(--warn-fg); }
+  #buscador { position: relative; }
+  #q { width: 230px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+  #sugerencias { position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; margin-top: 2px; max-height: 260px; overflow: auto; display: none; }
+  #sugerencias button { display: block; width: 100%; text-align: left; padding: 6px 8px; border: 0; background: none; color: var(--fg); font: inherit; cursor: pointer; }
+  #sugerencias button:hover, #sugerencias button:focus { background: var(--bg); }
+  #sugerencias small { color: var(--muted); }
+  #mapa { position: relative; background: var(--map-bg); min-height: 0; }
+  #capas { position: absolute; top: 10px; left: 10px; z-index: 2; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 250px; }
+  #capas h2 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  #capas label { display: flex; align-items: center; gap: 6px; margin: 3px 0; cursor: pointer; }
+  .leyenda { margin: 4px 0 6px 22px; font-size: 12px; color: var(--muted); display: none; }
+  .leyenda.on { display: block; }
+  .leyenda i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-right: 5px; vertical-align: -2px; border: 1px solid rgba(0,0,0,.25); }
+  .leyenda div { white-space: nowrap; }
+  #estado { position: absolute; left: 10px; bottom: 28px; z-index: 2; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; color: var(--muted); max-width: 70%; }
+  #estado.alerta { background: var(--warn-bg); color: var(--warn-fg); }
+  #acciones { position: absolute; top: 10px; right: 10px; z-index: 2; display: flex; gap: 6px; }
+  .boton { background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font: inherit; cursor: pointer; }
+  .boton:hover { border-color: var(--accent); }
+  .boton[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  aside { overflow: auto; border-left: 1px solid var(--line); background: var(--surface); padding: 12px 14px 18px; }
+  aside h2 { font-size: 16px; margin: 0 0 2px; }
+  aside h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 16px 0 4px; }
+  .vacio { color: var(--muted); }
+  .clase { display: inline-block; min-width: 28px; text-align: center; color: #fff; border-radius: 4px; padding: 1px 6px; font-weight: 600; margin-right: 6px; }
+  .pieza { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 6px 0; }
+  .pieza .tit { font-weight: 600; }
+  .meta { color: var(--muted); font-size: 12px; }
+  table.normas { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 4px; }
+  table.normas td, table.normas th { border-top: 1px solid var(--line); padding: 3px 4px; text-align: left; vertical-align: top; }
+  table.normas th { width: 44%; font-weight: 500; color: var(--muted); }
+  .borrador { background: var(--warn-bg); color: var(--warn-fg); border-radius: 4px; padding: 1px 6px; font-size: 12px; font-weight: 600; display: inline-block; }
+  .riesgo { color: var(--riesgo); font-weight: 600; }
+  a { color: var(--accent); }
+  details { margin-top: 4px; font-size: 12px; color: var(--muted); }
+  footer { grid-column: 1 / -1; padding: 5px 12px; font-size: 11.5px; color: var(--muted); border-top: 1px solid var(--line); background: var(--surface); }
+  footer strong { color: var(--fg); }
+  @media (max-width: 800px) { #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr 45vh auto; } aside { border-left: 0; border-top: 1px solid var(--line); } }
 </style>
 </head>
 <body>
-<div id="mapa"></div>
-<div id="capas">
-  <label><input type="checkbox" data-capa="normativa" checked> Normativa</label>
-  <label><input type="checkbox" data-capa="ocupacion"> Ocupación</label>
-  <label><input type="checkbox" data-capa="comunas" checked> Comunas</label>
+<div id="app">
+  <header>
+    <h1>Regu Suelo</h1>
+    <span class="sello">Solo local</span>
+    <span class="sello" id="marca">BORRADOR · uso interno</span>
+    <div id="buscador">
+      <input id="q" type="search" placeholder="Buscar comuna…" autocomplete="off" aria-label="Buscar comuna">
+      <div id="sugerencias" role="listbox"></div>
+    </div>
+  </header>
+
+  <div id="mapa">
+    <div id="capas">
+      <h2>Capas</h2>
+      <label><input type="checkbox" data-capa="normativa" checked> Normativa</label>
+      <div class="leyenda on" id="ley-normativa"></div>
+      <label><input type="checkbox" data-capa="ocupacion"> Ocupación por zona</label>
+      <div class="leyenda" id="ley-ocupacion"></div>
+      <label><input type="checkbox" data-capa="edificios" checked> Edificios (3D desde zoom 15)</label>
+      <label><input type="checkbox" data-capa="comunas" checked> Límites comunales</label>
+    </div>
+    <div id="acciones">
+      <button class="boton" id="blamina" title="Descarga la lámina comunal en PDF (A3) de la comuna al centro del mapa">Lámina PDF</button>
+      <button class="boton" id="b3d" aria-pressed="false" title="Inclinar el mapa para ver los edificios en 3D">3D</button>
+    </div>
+    <div id="estado">Haz clic en el mapa para ver la ficha de un punto.</div>
+  </div>
+
+  <aside id="panel" aria-live="polite">
+    <h2>Ficha normativa</h2>
+    <p class="vacio">Haz clic en el mapa. El resultado es preliminar y referencial.</p>
+  </aside>
+
+  <footer>
+    <strong>Información referencial.</strong> No reemplaza el Certificado de Informaciones Previas (CIP), que emite solo la Dirección de Obras Municipales (OGUC art. 1.4.4).
+    Fuentes: IDE MINVU · Portal IPT MINVU · BCN (división comunal) · © OpenStreetMap contributors, Overture Maps Foundation (ODbL).
+  </footer>
 </div>
-<div id="estado">Regu Suelo · local · verificación de teselas (A3)</div>
+
 <script src="/static/vendor/maplibre-gl.js"></script>
 <script src="/static/vendor/pmtiles.js"></script>
 <script>
-  const COLORES = {U1: "#b0442b", U2: "#e08a3c", U3: "#8c5aa0", E: "#d8bf3f", R1: "#5c8f52", R2: "#cfd2bf"};
-  const protocolo = new pmtiles.Protocol();
-  maplibregl.addProtocol("pmtiles", protocolo.tilev4);
-  const url = (t) => "pmtiles://" + location.origin + "/tiles/" + t + ".pmtiles";
-  const porClase = ["match", ["get", "clase"], ...Object.entries(COLORES).flat(), "#999999"];
-  const mapa = new maplibregl.Map({
-    container: "mapa", center: [-72.59, -38.74], zoom: 11, hash: true,
-    style: {version: 8, sources: {
-      normativa: {type: "vector", url: url("normativa")},
-      ocupacion: {type: "vector", url: url("ocupacion")},
-      comunas: {type: "vector", url: url("comunas")}},
-      layers: [
-        {id: "fondo", type: "background", paint: {"background-color": "#e6e8df"}},
-        {id: "normativa", type: "fill", source: "normativa", "source-layer": "ipt", paint: {"fill-color": porClase, "fill-opacity": 0.7}},
-        {id: "ocupacion", type: "fill", source: "ocupacion", "source-layer": "ocupacion", layout: {visibility: "none"}, paint: {"fill-color": ["get", "color"], "fill-opacity": 0.85}},
-        {id: "comunas", type: "line", source: "comunas", "source-layer": "comunas", paint: {"line-color": "#2b332d", "line-width": 1}}]},
-  });
-  mapa.addControl(new maplibregl.NavigationControl(), "top-right");
-  document.querySelectorAll("#capas input").forEach((i) => i.addEventListener("change", () =>
-    mapa.setLayoutProperty(i.dataset.capa, "visibility", i.checked ? "visible" : "none")));
-  mapa.on("error", (e) => { document.getElementById("estado").textContent = "Error: " + (e.error && e.error.message || e); });
+"use strict";
+const CLASES = {
+  U1: ["#b0442b", "Urbano · PRC o plan seccional"], U2: ["#e08a3c", "Urbano · límite urbano sin PRC"],
+  U3: ["#8c5aa0", "Zona urbana de PRI/PRM"], E: ["#d8bf3f", "Extensión urbana (PRI/PRM)"],
+  R1: ["#5c8f52", "Rural de PRI/PRM"], R2: ["#cfd2bf", "Rural sin instrumento"]
+};
+const TRAMOS = [["< 2 %", "#ffffcc"], ["2 – 5 %", "#c7e9b4"], ["5 – 10 %", "#7fcdbb"], ["10 – 20 %", "#41b6c4"],
+                ["20 – 30 %", "#2c7fb8"], ["≥ 30 %", "#253494"], ["sin edificios", "#d9d9d9"]];
+const ZOOM_EDIFICIOS = 15;
+const ETIQUETAS_NORMA = [
+  ["agrupamiento", "Agrupamiento"], ["ocupacion_max", "Ocupación máx. (coef.)"], ["constructibilidad_max", "Constructibilidad máx. (coef.)"],
+  ["altura_max_m", "Altura máx. (m)"], ["altura_max_pisos", "Altura máx. (pisos)"], ["antejardin_m", "Antejardín (m)"],
+  ["distanciamiento_m", "Distanciamiento (m)"], ["rasante_grados", "Rasante"], ["densidad_max", "Densidad máx. (viv/ha)"]];
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const fmt = (n, d = 0) => (n == null ? "—" : Number(n).toLocaleString("es-CL", {minimumFractionDigits: d, maximumFractionDigits: d}));
+const sinTilde = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const urlSegura = (u) => (/^https?:\/\//i.test(u || "") ? u : null);
+
+// ── Mapa ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+const protocolo = new pmtiles.Protocol();
+maplibregl.addProtocol("pmtiles", protocolo.tilev4);
+const tesela = (t) => "pmtiles://" + location.origin + "/tiles/" + t + ".pmtiles";
+const colorClase = ["match", ["get", "clase"], ...Object.entries(CLASES).flatMap(([k, v]) => [k, v[0]]), "#999999"];
+const vacio = {type: "FeatureCollection", features: []};
+
+const mapa = new maplibregl.Map({
+  container: "mapa", center: [-72.59, -38.74], zoom: 11, minZoom: 3, maxZoom: 19, hash: true, maxPitch: 70,
+  style: {version: 8, sources: {
+    normativa: {type: "vector", url: tesela("normativa")}, ocupacion: {type: "vector", url: tesela("ocupacion")},
+    comunas: {type: "vector", url: tesela("comunas")}, edificios: {type: "geojson", data: vacio}},
+  layers: [
+    {id: "fondo", type: "background", paint: {"background-color": "#e6e8df"}},
+    {id: "normativa", type: "fill", source: "normativa", "source-layer": "ipt", paint: {"fill-color": colorClase, "fill-opacity": 0.72}},
+    {id: "riesgo", type: "fill", source: "normativa", "source-layer": "ipt", filter: ["==", ["get", "riesgo"], 1], paint: {"fill-pattern": "achurado", "fill-opacity": 0.9}},
+    {id: "ocupacion", type: "fill", source: "ocupacion", "source-layer": "ocupacion", layout: {visibility: "none"}, paint: {"fill-color": ["get", "color"], "fill-opacity": 0.88}},
+    {id: "comunas", type: "line", source: "comunas", "source-layer": "comunas", paint: {"line-color": "#2b332d", "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.4, 12, 1.4]}},
+    {id: "edificios", type: "fill-extrusion", source: "edificios", minzoom: ZOOM_EDIFICIOS, paint: {
+      "fill-extrusion-height": ["get", "altura_est"], "fill-extrusion-base": 0, "fill-extrusion-opacity": 0.92,
+      "fill-extrusion-color": ["match", ["get", "altura_fuente"], "estimado", "#c4c9d1", "#8794a6"]}}]},
+});
+mapa.addControl(new maplibregl.NavigationControl({visualizePitch: true}), "bottom-right");
+mapa.addControl(new maplibregl.ScaleControl({unit: "metric"}), "bottom-left");
+
+// Trama diagonal para las zonas con riesgo (se superpone a la clase base). Una diagonal de esquina a esquina encaja sin
+// costuras entre teselas; el mapa pide la imagen por su nombre cuando pinta la capa "riesgo".
+mapa.on("styleimagemissing", (e) => {
+  if (e.id !== "achurado" || mapa.hasImage("achurado")) return;
+  const n = 12, c = document.createElement("canvas"); c.width = c.height = n;
+  const x = c.getContext("2d"); x.strokeStyle = "rgba(120,10,10,.9)"; x.lineWidth = 2; x.lineCap = "square";
+  x.beginPath(); x.moveTo(0, n); x.lineTo(n, 0); x.stroke();
+  mapa.addImage("achurado", x.getImageData(0, 0, n, n), {pixelRatio: 2});
+});
+
+// Leyendas
+$("ley-normativa").innerHTML = Object.entries(CLASES).map(([k, v]) => `<div><i style="background:${v[0]}"></i><b>${k}</b> ${esc(v[1])}</div>`).join("")
+  + `<div><i style="background:repeating-linear-gradient(135deg,#fff 0 3px,#780a0a 3px 4px)"></i>Zona de riesgo</div>`;
+$("ley-ocupacion").innerHTML = TRAMOS.map(([t, c]) => `<div><i style="background:${c}"></i>${esc(t)}</div>`).join("")
+  + `<div style="white-space:normal;max-width:210px;margin-top:3px">Huella de edificios / área bruta de la zona (solo zonas de PRC). No es el coeficiente de la OGUC.</div>`;
+
+// Selector de capas
+const capasDe = {normativa: ["normativa", "riesgo"], ocupacion: ["ocupacion"], edificios: ["edificios"], comunas: ["comunas"]};
+document.querySelectorAll("#capas input[data-capa]").forEach((i) => i.addEventListener("change", () => {
+  capasDe[i.dataset.capa].forEach((l) => mapa.setLayoutProperty(l, "visibility", i.checked ? "visible" : "none"));
+  const ley = $("ley-" + i.dataset.capa); if (ley) ley.classList.toggle("on", i.checked);
+  if (i.dataset.capa === "edificios") cargarEdificios();
+}));
+$("b3d").addEventListener("click", () => {
+  const on = $("b3d").getAttribute("aria-pressed") !== "true";
+  $("b3d").setAttribute("aria-pressed", on);
+  mapa.easeTo({pitch: on ? 55 : 0, bearing: on ? -20 : 0, duration: 600});
+});
+
+function estado(txt, alerta = false) { const e = $("estado"); e.textContent = txt; e.classList.toggle("alerta", alerta); }
+mapa.on("error", (e) => {
+  const fuente = e.sourceId || (e.error && e.error.sourceId);
+  if (fuente) estado(`Falta la tesela «${fuente}»: corre «python run.py teselas ${fuente}».`, true);
+});
+
+// ── Edificios del área visible (DuckDB en el servidor): tope y simplificación según zoom ─────────────────────────────
+let abortEdificios = null, temporizador = null;
+async function cargarEdificios() {
+  const activo = document.querySelector('#capas input[data-capa="edificios"]').checked;
+  if (abortEdificios) abortEdificios.abort();
+  if (!activo || mapa.getZoom() < ZOOM_EDIFICIOS) { mapa.getSource("edificios").setData(vacio); return; }
+  abortEdificios = new AbortController();
+  const b = mapa.getBounds(), bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].map((v) => v.toFixed(5)).join(",");
+  try {
+    const r = await fetch(`/api/edificios?bbox=${bbox}&zoom=${mapa.getZoom().toFixed(1)}`, {signal: abortEdificios.signal});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    mapa.getSource("edificios").setData(d);
+    if (d.aviso) estado(d.aviso, true);
+    else estado(`${fmt(d.features.length)} edificios · altura: Overture si existe, si no estimada (solo para visualizar).`);
+  } catch (e) { if (e.name !== "AbortError") estado("No se pudieron cargar los edificios: " + e.message, true); }
+}
+mapa.on("moveend", () => { clearTimeout(temporizador); temporizador = setTimeout(cargarEdificios, 250); });
+
+// ── Ficha de un punto ───────────────────────────────────────────────────────────────────────────────────────────────
+let marcador = null;
+mapa.on("click", async (ev) => {
+  if (window.__dibujando) return;               // lo usa el dibujo de predio (A5)
+  const {lng, lat} = ev.lngLat;
+  marcador && marcador.remove();
+  marcador = new maplibregl.Marker({color: "#1f5f73"}).setLngLat([lng, lat]).addTo(mapa);
+  $("panel").innerHTML = "<h2>Ficha normativa</h2><p class='vacio'>Consultando…</p>";
+  try {
+    const r = await fetch(`/api/ficha?lon=${lng.toFixed(6)}&lat=${lat.toFixed(6)}`);
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    mostrarFicha(await r.json());
+  } catch (e) { $("panel").innerHTML = `<h2>Ficha normativa</h2><p class="vacio">No se pudo consultar: ${esc(e.message)}</p>`; }
+});
+
+function filasNorma(n) {
+  const f = ETIQUETAS_NORMA.filter(([k]) => n[k]).map(([k, et]) => `<tr><th>${esc(et)}</th><td>${esc(n[k])}</td></tr>`).join("");
+  const est = n.estado === "VALIDADO" ? `<span class="meta">VALIDADO</span>` : `<span class="borrador">${esc(n.estado || "BORRADOR")}</span>`;
+  return `<div style="margin-top:6px">${est} <span class="meta">${esc(n.articulo_fuente || "")}</span></div>
+    <table class="normas">${f}</table>
+    ${n.fuente_por_valor ? `<details><summary>Artículo de origen de cada valor</summary>${esc(n.fuente_por_valor)}</details>` : ""}
+    ${n.notas ? `<details><summary>Vacíos, excepciones y discrepancias</summary>${esc(n.notas)}</details>` : ""}`;
+}
+
+function mostrarFicha(f) {
+  $("marca").classList.toggle("on", !!f.marca);
+  let h = `<h2>${esc(f.comuna || "Sin comuna")}</h2><div class="meta">${esc(f.region || "")}${f.tiempo_ms != null ? ` · ${f.tiempo_ms} ms` : ""}</div>`;
+  if (f.cobertura !== "completa" && f.motivo) h += `<p class="borrador" style="margin-top:8px">${esc(f.motivo)}</p>`;
+  if (!f.particion.length) { $("panel").innerHTML = h + `<p class="vacio">Sin cobertura en este punto.</p>`; return; }
+  h += "<h3>Situación normativa</h3>";
+  for (const p of f.particion) {
+    const v = p.vigencia, url = urlSegura(v && v.ordenanza_url), oc = p.ocupacion;
+    h += `<div class="pieza"><div class="tit"><span class="clase" style="background:${(CLASES[p.clase] || ["#999"])[0]}">${esc(p.clase)}</span>${esc(p.ipt_tipo || "")} ${esc(p.ipt || "")}${p.zona ? " · zona " + esc(p.zona) : ""}</div>
+      <div class="meta">${esc(p.norma_titulo || "")}${p.pct < 99.99 ? ` · ${fmt(p.pct, 1)} %` : ""}</div>
+      ${p.riesgo_pct > 0 ? `<div class="riesgo">Zona de riesgo${p.pct < 99.99 || p.riesgo_pct < 99.99 ? ` (${fmt(p.riesgo_pct, 1)} %)` : ""}</div>` : ""}`;
+    if (v) h += `<h3>Vigencia</h3><div>${esc(v.instrumento || "")}<br>${esc(v.norma || "")}${v.fecha_vigencia ? " · vigente desde " + esc(v.fecha_vigencia) : ""}${v.ultima_modificacion ? " · última modificación " + esc(v.ultima_modificacion) : ""}
+      ${url ? `<br><a href="${esc(url)}" target="_blank" rel="noopener">Ordenanza (PDF)</a>` : ""} <span class="meta">· ${esc(v.fuente || "Portal IPT MINVU")}</span></div>`;
+    if (oc) h += `<h3>Ocupación existente de la zona</h3><div><b>${fmt(oc.coef_ocupacion * 100, 1)} %</b> <span class="meta">de ${fmt(oc.ha, 1)} ha · ${fmt(oc.n_edificios)} edificios · ${fmt(oc.m2_huella)} m² de huella</span><br><span class="meta">${esc(oc.nota)} Fuente: ${esc(oc.fuente)}.</span></div>`;
+    if (p.normas && p.normas.length) h += `<h3>Normas de la zona</h3>` + p.normas.map(filasNorma).join("");
+    h += "</div>";
+  }
+  if (f.riesgo_pct > 0 && f.particion.length > 1) h += `<p class="riesgo">Riesgo en el ${fmt(f.riesgo_pct, 1)} % del área.</p>`;
+  if (f.afectaciones.length) {
+    h += "<h3>Afectaciones</h3>" + f.afectaciones.map((a) => `<div class="pieza"><span class="tit">${esc(a.zona || a.capa || a.tipo)}</span>${a.riesgo ? ' <span class="riesgo">riesgo</span>' : ""}
+      <div class="meta">${esc(a.tipo || "")} · ${esc(a.capa || "")}${a.pct < 99.99 ? ` · ${fmt(a.pct, 1)} %` : ""}</div>${a.detalle ? `<div class="meta">${esc(a.detalle)}</div>` : ""}</div>`).join("");
+  }
+  h += `<p class="meta" style="margin-top:14px">${esc(f.aviso)}</p>`;
+  $("panel").innerHTML = h;
+}
+
+// ── Lámina PDF de la comuna al centro del mapa (sig/) ───────────────────────────────────────────────────────────────
+$("blamina").addEventListener("click", async () => {
+  const b = $("blamina"), c = mapa.getCenter();
+  b.disabled = true; estado("Generando la lámina… puede tardar unos segundos.");
+  try {
+    const f = await (await fetch(`/api/ficha?lon=${c.lng.toFixed(6)}&lat=${c.lat.toFixed(6)}`)).json();
+    if (!f.cut) throw new Error("el centro del mapa no cae en ninguna comuna");
+    const r = await fetch(`/api/lamina?cut=${encodeURIComponent(f.cut)}`, {method: "POST"});
+    if (!r.ok) throw new Error((await r.json()).detail || ("HTTP " + r.status));
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(await r.blob()); a.download = `lamina_comunal_${f.cut}.pdf`; a.click();
+    URL.revokeObjectURL(a.href); estado(`Lámina de ${f.comuna} descargada.`);
+  } catch (e) { estado("No se pudo generar la lámina: " + e.message, true); }
+  finally { b.disabled = false; }
+});
+
+// ── Buscador de comuna ──────────────────────────────────────────────────────────────────────────────────────────────
+let comunas = [];
+fetch("/api/comunas").then((r) => r.json()).then((c) => { comunas = c; }).catch(() => {});
+const q = $("q"), sug = $("sugerencias");
+function irA(c) {
+  sug.style.display = "none"; q.value = c.nombre;
+  mapa.fitBounds([[c.bbox[0], c.bbox[1]], [c.bbox[2], c.bbox[3]]], {padding: 30, duration: 800});
+}
+q.addEventListener("input", () => {
+  const t = sinTilde(q.value.trim());
+  const r = t ? comunas.filter((c) => sinTilde(c.nombre).includes(t)).slice(0, 8) : [];
+  sug.innerHTML = r.map((c, i) => `<button type="button" data-i="${i}">${esc(c.nombre)} <small>${esc(c.region.replace(/^Región (de |del |de la )?/, ""))}</small></button>`).join("");
+  sug.style.display = r.length ? "block" : "none";
+  sug.querySelectorAll("button").forEach((b, i) => b.addEventListener("click", () => irA(r[i])));
+});
+q.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { const b = sug.querySelector("button"); if (b) b.click(); }
+  if (e.key === "Escape") sug.style.display = "none";
+});
+document.addEventListener("click", (e) => { if (!$("buscador").contains(e.target)) sug.style.display = "none"; });
 </script>
 </body>
 </html>

@@ -11,6 +11,12 @@ MARCA_BORRADOR = "BORRADOR · uso interno"
 TEMAS_TESELAS = ("normativa", "ocupacion", "comunas")
 
 
+def _regiones_lamina(cfg: dict) -> tuple[str, ...] | None:
+    """`app.lamina_regiones` de config.yaml: lista de regiones, o `todas` (None) cuando el sig/ ya sirve para cualquier región."""
+    v = (cfg.get("app") or {}).get("lamina_regiones", ["Región de La Araucanía"])
+    return None if v in ("todas", None) else tuple(v)
+
+
 @dataclass
 class Ajustes:
     gpkg: Path
@@ -25,6 +31,7 @@ class Ajustes:
     registrar: bool = True                 # anotar la consulta en data/demanda (sin coordenadas)
     altura_piso_ref_m: float = 3.5         # parámetro del modelo (NO es norma): ver config.yaml, bloque `volumen`
     dir_tiles: Path | None = None          # PMTiles locales (python run.py teselas); por defecto <dir_out>/tiles
+    lamina_regiones: tuple[str, ...] | None = ("Región de La Araucanía",)   # None = todas (config.yaml: app.lamina_regiones)
 
     @classmethod
     def desde_cfg(cls, cfg: dict, ruta: Callable[[dict, str], Path], gpkg: Path | None = None) -> "Ajustes":
@@ -37,7 +44,7 @@ class Ajustes:
                    dir_demanda=ruta(cfg, "demanda"), comunas=ruta(cfg, "comunas"),
                    f_cut=c["field_cut"], f_nombre=c["field_nombre"], f_region=c["field_region"],
                    altura_piso_ref_m=float((cfg.get("volumen") or {}).get("altura_piso_ref_m", 3.5)),
-                   dir_tiles=out / "tiles")
+                   dir_tiles=out / "tiles", lamina_regiones=_regiones_lamina(cfg))
 
     @property
     def tiles(self) -> Path | None:

@@ -141,6 +141,12 @@ pri_subclase:
   R: "(RURAL|SILVO|AGRO|AGRIC|PROTECCION|PRESERVACION|\\bZR|\\bAR\\b|INTERES|VALOR NATURAL|RESTRICCION)"
   U: "(URBAN|CONSOLIDAD|\\bZU|\\bAU\\b)"
 
+# Regu Suelo local (docs/REGU_SUELO_LOCAL.md). El sig/ de master tiene fijos el rótulo de región y el minimapa de La
+# Araucanía (arreglado en la rama codex/sig-layouts, pendiente de PR a master): hasta integrarla, la lámina solo se
+# ofrece en estas regiones. Poner `lamina_regiones: todas` cuando se integre esa rama.
+app:
+  lamina_regiones: ["Región de La Araucanía"]
+
 # Volumen (Regu Suelo, docs/VOLUMENES.md). La altura de piso de referencia NO es una norma: es un parámetro del modelo.
 # 3,5 m es el módulo de piso que usa la propia ordenanza del PRC de Temuco en el Art. 16 (nota *5). Una norma de zona
 # que traiga altura_piso_ref_m en normas/normas_zona.csv la reemplaza. Confirmar con el arquitecto.

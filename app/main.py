@@ -20,7 +20,7 @@ from etl import envolvente
 from etl.ficha import ficha as calcular_ficha
 from etl.normalize import norm_txt
 
-from . import datos, edificios
+from . import datos, edificios, lamina
 from .ajustes import MARCA_BORRADOR, TEMAS_TESELAS, Ajustes
 
 STATIC = Path(__file__).parent / "static"
@@ -66,6 +66,17 @@ def crear_app(a: Ajustes) -> FastAPI:
     @app.get("/api/comunas")
     def api_comunas():
         return datos.comunas(a)
+
+    @app.post("/api/lamina")
+    def api_lamina(cut: str = Query(..., pattern=r"^\d{5}$", description="CUT de la comuna, 5 dígitos")):
+        """Lámina comunal en PDF (A3 horizontal) con sig/. Se reutiliza mientras el GPKG de build no cambie."""
+        try:
+            pdf = lamina.lamina_pdf(a, cut)
+        except KeyError as ex:
+            raise HTTPException(404, f"Comuna {cut} desconocida") from ex
+        except lamina.LaminaNoDisponible as ex:
+            raise HTTPException(409, str(ex) or "No hay PMTiles regional para el minimapa: corre `python run.py mapa --region <región>`") from ex
+        return FileResponse(pdf, media_type="application/pdf", filename=f"lamina_comunal_{cut}.pdf")
 
     @app.get("/tiles/{tema}.pmtiles")
     def tiles(tema: str):

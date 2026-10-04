@@ -596,6 +596,7 @@ def _app_fixture(tmp: Path):
         {**base, "zona": "ZH2", "riesgo": False, "id": "a1"},
         {**base, "zona": "ZHR5", "riesgo": True, "id": "a2"},
     ], geometry=[zh2, zhr5], crs=4326)
+    capa["area_m2"] = capa.to_crs("ESRI:102033").area.round(1)
     afec = gpd.GeoDataFrame([{"ipt_tipo": "PRC", "capa": "Areas_protec", "zona": "APP 1", "zona_desc": "Área de protección",
                               "riesgo": False}], geometry=[box(-72.60, -38.74, -72.595, -38.735)], crs=4326)
     gpkg = out / "regu_ipt_nacional_20261004.gpkg"
@@ -810,6 +811,36 @@ def test_app_teselas():
     print("  app teselas: OK")
 
 
+def test_app_lamina():
+    """A6 de Regu Suelo: POST /api/lamina devuelve el PDF de sig/, lo reutiliza, y avisa si no se puede ofrecer."""
+    import pymupdf
+    from fastapi.testclient import TestClient
+    from app.main import crear_app
+    from etl import teselas as T
+    with tempfile.TemporaryDirectory() as d:
+        a = _app_fixture(Path(d))
+        c = TestClient(crear_app(a))
+        r = c.post("/api/lamina", params={"cut": "09101"})
+        assert r.status_code == 409 and "run.py mapa" in r.json()["detail"], r.text      # sin PMTiles regional del minimapa
+        T.normativa(a.gpkg, Path(a.dir_out) / "mapa_araucania" / "capa_ipt.pmtiles")
+        r = c.post("/api/lamina", params={"cut": "09101"})
+        assert r.status_code == 200 and r.headers["content-type"] == "application/pdf" and r.content[:4] == b"%PDF", r.text[:300]
+        assert "lamina_comunal_09101.pdf" in r.headers["content-disposition"]
+        txt = pymupdf.open(stream=r.content, filetype="pdf")[0].get_text()
+        assert "Comuna de Temuco" in txt and "Información referencial" in txt and a.gpkg.stem in txt, txt[:400]
+        pdf = Path(a.dir_out) / "laminas" / f"09101_{a.gpkg.stem}.pdf"
+        t0 = pdf.stat().st_mtime
+        assert c.post("/api/lamina", params={"cut": "09101"}).status_code == 200 and pdf.stat().st_mtime == t0, "se reutiliza"
+        assert c.post("/api/lamina", params={"cut": "99999"}).status_code == 404
+        assert c.post("/api/lamina", params={"cut": "abc"}).status_code == 422
+        a.lamina_regiones = ("Región de Los Lagos",)                       # región no ofrecida mientras sig/ no esté integrado
+        r = c.post("/api/lamina", params={"cut": "09101"})
+        assert r.status_code == 409 and "codex/sig-layouts" in r.json()["detail"], r.text
+        a.lamina_regiones = None
+        assert c.post("/api/lamina", params={"cut": "09101"}).status_code == 200
+    print("  app lamina: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -888,6 +919,7 @@ if __name__ == "__main__":
     test_envolvente_sintetico()
     test_app_edificios_volumen()
     test_app_teselas()
+    test_app_lamina()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
