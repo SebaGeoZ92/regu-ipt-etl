@@ -470,6 +470,27 @@ def cmd_volumen(cfg, args):
         gpkg = ultimo_gpkg(out)
     if not gpkg or not gpkg.exists():
         sys.exit("No hay GPKG de build (usa --region o --gpkg)")
+    if accion == "vcalc":
+        # V2 de VOLÚMENES: V_calc de los predios de un JSON guardado desde catastral.cl (--predios), sin nuevas consultas
+        from etl import ocupacion as O
+        from etl import vcalc as C
+        if not args.predios:
+            sys.exit("Falta --predios (JSON de predios guardado desde catastral.cl, ver etl/vcalc.py)")
+        predios = C.cargar_predios(Path(args.predios))
+        zonas = gpd.read_file(gpkg, layer="capa_ipt", where=f"fuente = 'PRC' AND ipt_nombre = '{args.ipt}'")
+        fps = O.regiones_con_footprints(dir_fp)
+        reg = zonas["region"].dropna().iloc[0] if len(zonas) else None
+        if reg not in fps:
+            sys.exit(f"Sin footprints completos para la región de {args.ipt} ({reg}): corre `footprints descargar`")
+        x0, y0, x1, y1 = predios.total_bounds
+        edif = gpd.read_parquet(fps[reg]).cx[x0 - 0.002:x1 + 0.002, y0 - 0.002:y1 + 0.002]
+        tabla = C.calcular(predios, edif, zonas=zonas)
+        destino = out / f"vcalc_{slug}_piloto.csv"
+        tabla.to_csv(destino, index=False, encoding="utf-8-sig")
+        with pd.option_context("display.width", 220, "display.max_columns", 30, "display.max_colwidth", 60):
+            print(tabla.to_string(index=False))
+        log.info("V_calc: %s (%d predios, %d edificios cercanos)", destino, len(tabla), len(edif))
+        return
     capa = gpd.read_file(gpkg, layer="capa_ipt", where="ipt_tipo = 'PRC'")
     if accion == "footprints":
         bb = V.bbox_ipt(capa, args.ipt)

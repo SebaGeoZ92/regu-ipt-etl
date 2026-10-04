@@ -553,6 +553,34 @@ def test_ocupacion_sintetico():
     print("  ocupacion: OK")
 
 
+def test_vcalc_sintetico():
+    """V2 de VOLÚMENES: huella con >50 % dentro del predio, pisos desde la construida SII, sin inventar."""
+    import pandas as pd
+    from etl import vcalc as C
+    crs = "ESRI:102033"
+    predios = gpd.GeoDataFrame({
+        "rol": ["A", "B", "C", "D"], "m2_terreno": [200.0, 200.0, 200.0, 100.0],
+        "sup_construida_total": [240.0, 60.0, np.nan, 20.0], "pisos_max": [3, 1, np.nan, 1],
+    }, geometry=[box(0, 0, 20, 10), box(30, 0, 50, 10), box(60, 0, 80, 10), box(90, 0, 100, 10)], crs=crs)
+    edif = gpd.GeoDataFrame({"num_floors": [np.nan, np.nan, np.nan, np.nan, np.nan]}, geometry=[
+        box(2, 2, 12, 10),      # A: 80 m² dentro del predio
+        box(14, 2, 24, 10),     # A: 60 % dentro (6 de 10 de ancho)  -> cuenta, 80 m²
+        box(32, 2, 42, 8),      # B: 60 m²
+        box(18.5, 2, 28.5, 8),  # 5 % en A, 5 % fuera: <50 % dentro de cualquier predio -> no cuenta
+        box(90.5, 2, 99.5, 8),  # D: 54 m²
+    ], crs=crs)
+    zonas = gpd.GeoDataFrame({"zona": ["ZH2"]}, geometry=[box(-5, -5, 55, 15)], crs=crs)
+    t = C.calcular(predios, edif, zonas=zonas).set_index("rol")
+    a, b, c, d = t.loc["A"], t.loc["B"], t.loc["C"], t.loc["D"]
+    assert a.n_edificios == 2 and abs(a.huella_m2 - 160) < 1e-6 and a.pisos_est == 2 and abs(a.m2_equiv - 320) < 1e-6 and a.zona == "ZH2", a
+    assert b.pisos_est == 1 and abs(b.huella_m2 - 60) < 1e-6 and b.fuente_pisos == "sii" and b.confianza_pisos
+    assert c.estado == "sin_dato" and c.n_edificios == 0 and np.isnan(c.m2_equiv) and c.zona == "" and "sin huella" in c.avisos
+    assert d.pisos_est == 1 and d.zona == "" and "menos de la mitad" in d.avisos, d
+    assert t.v_calc_m3.isna().all(), "sin altura de piso de referencia no hay m³"
+    assert abs(C.calcular(predios, edif, altura_piso_ref_m=2.5).set_index("rol").loc["A", "v_calc_m3"] - 800) < 1e-6
+    print("  vcalc: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -626,6 +654,7 @@ if __name__ == "__main__":
     test_volumen_paso0()
     test_footprints_sintetico()
     test_ocupacion_sintetico()
+    test_vcalc_sintetico()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
