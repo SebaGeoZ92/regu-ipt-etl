@@ -811,6 +811,74 @@ def test_app_teselas():
     print("  app teselas: OK")
 
 
+def test_app_basemap():
+    """Mapa base OSM: proxy con User-Agent identificable, caché en disco, copia vencida sin internet y respuestas inválidas."""
+    import os
+    import time
+    import requests
+    from fastapi.testclient import TestClient
+    from app import basemap
+    from app.main import crear_app
+
+    class Resp:
+        def __init__(self, codigo=200, tipo="image/png", cuerpo=b"\x89PNG\r\n\x1a\nXXXX"):
+            self.status_code, self.headers, self.content = codigo, {"content-type": tipo}, cuerpo
+
+    llamadas, respuestas = [], []
+    original = basemap.requests.get
+
+    def falso(url, headers=None, timeout=None):
+        llamadas.append({"url": url, "ua": (headers or {}).get("User-Agent")})
+        r = respuestas.pop(0) if respuestas else Resp()
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    basemap.requests.get = falso
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            a = _app_fixture(Path(d))
+            c = TestClient(crear_app(a))
+            r = c.get("/basemap/osm/12/1222/2526.png")
+            assert r.status_code == 200 and r.content[:4] == b"\x89PNG" and r.headers["content-type"] == "image/png"
+            assert llamadas[0]["url"] == "https://tile.openstreetmap.org/12/1222/2526.png", llamadas
+            assert llamadas[0]["ua"].startswith("ReguSueloLocal/") and "github.com" in llamadas[0]["ua"], "User-Agent identificable"
+            assert (Path(a.dir_out) / "cache_basemap" / "osm" / "12" / "1222" / "2526.png").exists()
+            assert c.get("/basemap/osm/12/1222/2526.png").status_code == 200 and len(llamadas) == 1, "la segunda sale de disco"
+            # copia vencida + sin internet → se sirve la vieja; copia vencida + internet → se vuelve a pedir
+            p = Path(a.dir_out) / "cache_basemap" / "osm" / "12" / "1222" / "2526.png"
+            viejo = time.time() - 30 * 86400
+            os.utime(p, (viejo, viejo))
+            respuestas.append(requests.ConnectionError("sin internet"))
+            assert c.get("/basemap/osm/12/1222/2526.png").status_code == 200 and len(llamadas) == 2, "usa la copia vencida"
+            os.utime(p, (viejo, viejo))
+            respuestas.append(Resp(cuerpo=b"\x89PNG\r\n\x1a\nNUEVA"))
+            assert c.get("/basemap/osm/12/1222/2526.png").content.endswith(b"NUEVA") and len(llamadas) == 3
+            # sin copia: sin internet o respuesta inválida → 502 y nada queda en disco
+            respuestas.append(requests.ConnectionError("sin internet"))
+            r = c.get("/basemap/osm/10/300/600.png")
+            assert r.status_code == 502 and "OSM" in r.json()["detail"]
+            respuestas.append(Resp(tipo="text/html", cuerpo=b"<html>bloqueado</html>"))
+            assert c.get("/basemap/osm/10/301/600.png").status_code == 502
+            respuestas.append(Resp(codigo=429))
+            assert c.get("/basemap/osm/10/302/600.png").status_code == 502
+            respuestas.append(Resp(cuerpo=b"0" * (basemap.MAX_BYTES + 1)))
+            assert c.get("/basemap/osm/10/303/600.png").status_code == 502
+            assert not any((Path(a.dir_out) / "cache_basemap" / "osm" / "10" / str(x) / "600.png").exists() for x in (300, 301, 302, 303))
+            n = len(llamadas)
+            for z, x, y in ((20, 0, 0), (3, 8, 0), (3, 0, 9)):               # fuera de rango: ni se pide a OSM
+                assert c.get(f"/basemap/osm/{z}/{x}/{y}.png").status_code == 422, (z, x, y)
+            assert len(llamadas) == n
+            # el User-Agent sale de la configuración
+            a.user_agent = "OtraApp/2.0 (contacto)"
+            respuestas.append(Resp())
+            c.get("/basemap/osm/9/150/300.png")
+            assert llamadas[-1]["ua"] == "OtraApp/2.0 (contacto)"
+    finally:
+        basemap.requests.get = original
+    print("  app basemap: OK")
+
+
 def test_app_lamina():
     """A6 de Regu Suelo: POST /api/lamina devuelve el PDF de sig/, lo reutiliza, y avisa si no se puede ofrecer."""
     import pymupdf
@@ -919,6 +987,7 @@ if __name__ == "__main__":
     test_envolvente_sintetico()
     test_app_edificios_volumen()
     test_app_teselas()
+    test_app_basemap()
     test_app_lamina()
     test_rescate_geos()
     test_paginacion_arcgis()

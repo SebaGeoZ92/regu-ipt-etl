@@ -146,6 +146,10 @@ pri_subclase:
 # ofrece en estas regiones. Poner `lamina_regiones: todas` cuando se integre esa rama.
 app:
   lamina_regiones: ["Región de La Araucanía"]
+  # OSM exige que la aplicación se identifique con un User-Agent propio (https://operations.osmfoundation.org/policies/tiles/).
+  # Un navegador no puede fijarlo, por eso las teselas OSM pasan por /basemap/osm y se guardan en disco. Si quieres que OSM
+  # pueda contactarte, agrega un contacto aquí (no se versiona nada personal por defecto).
+  user_agent: "ReguSueloLocal/1.0 (uso local; +https://github.com/SebaGeoZ92/regu-ipt-etl)"
 
 # Volumen (Regu Suelo, docs/VOLUMENES.md). La altura de piso de referencia NO es una norma: es un parámetro del modelo.
 # 3,5 m es el módulo de piso que usa la propia ordenanza del PRC de Temuco en el Art. 16 (nota *5). Una norma de zona

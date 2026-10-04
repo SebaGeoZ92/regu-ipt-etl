@@ -20,7 +20,7 @@ from etl import envolvente
 from etl.ficha import ficha as calcular_ficha
 from etl.normalize import norm_txt
 
-from . import datos, edificios, lamina
+from . import basemap, datos, edificios, lamina
 from .ajustes import MARCA_BORRADOR, TEMAS_TESELAS, Ajustes
 
 STATIC = Path(__file__).parent / "static"
@@ -77,6 +77,17 @@ def crear_app(a: Ajustes) -> FastAPI:
         except lamina.LaminaNoDisponible as ex:
             raise HTTPException(409, str(ex) or "No hay PMTiles regional para el minimapa: corre `python run.py mapa --region <región>`") from ex
         return FileResponse(pdf, media_type="application/pdf", filename=f"lamina_comunal_{cut}.pdf")
+
+    @app.get("/basemap/osm/{z}/{x}/{y}.png")
+    def basemap_osm(z: int, x: int, y: int):
+        """Tesela OSM con User-Agent identificable y caché en disco (app/basemap.py)."""
+        try:
+            p = basemap.tesela_osm(a, z, x, y)
+        except ValueError as ex:
+            raise HTTPException(422, str(ex)) from ex
+        except basemap.TeselaNoDisponible as ex:
+            raise HTTPException(502, f"Sin tesela OSM (¿sin internet?): {ex}") from ex
+        return FileResponse(p, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
     @app.get("/tiles/{tema}.pmtiles")
     def tiles(tema: str):

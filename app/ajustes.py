@@ -32,6 +32,9 @@ class Ajustes:
     altura_piso_ref_m: float = 3.5         # parámetro del modelo (NO es norma): ver config.yaml, bloque `volumen`
     dir_tiles: Path | None = None          # PMTiles locales (python run.py teselas); por defecto <dir_out>/tiles
     lamina_regiones: tuple[str, ...] | None = ("Región de La Araucanía",)   # None = todas (config.yaml: app.lamina_regiones)
+    user_agent: str = "ReguSueloLocal/1.0 (uso local; +https://github.com/SebaGeoZ92/regu-ipt-etl)"   # app.user_agent
+    osm_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+    osm_ttl_dias: int = 14                 # una tesela OSM en disco se reutiliza este tiempo antes de pedirla otra vez
 
     @classmethod
     def desde_cfg(cls, cfg: dict, ruta: Callable[[dict, str], Path], gpkg: Path | None = None) -> "Ajustes":
@@ -44,7 +47,13 @@ class Ajustes:
                    dir_demanda=ruta(cfg, "demanda"), comunas=ruta(cfg, "comunas"),
                    f_cut=c["field_cut"], f_nombre=c["field_nombre"], f_region=c["field_region"],
                    altura_piso_ref_m=float((cfg.get("volumen") or {}).get("altura_piso_ref_m", 3.5)),
-                   dir_tiles=out / "tiles", lamina_regiones=_regiones_lamina(cfg))
+                   dir_tiles=out / "tiles", lamina_regiones=_regiones_lamina(cfg),
+                   user_agent=(cfg.get("app") or {}).get("user_agent") or cls.user_agent)
+
+    @property
+    def cache_basemap(self) -> Path:
+        """Teselas OSM guardadas en disco (app/basemap.py): <dir_out>/cache_basemap."""
+        return Path(self.dir_out) / "cache_basemap"
 
     @property
     def tiles(self) -> Path | None:
