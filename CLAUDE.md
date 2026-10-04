@@ -222,8 +222,8 @@ Aplicación local (`python run.py app`, `http://localhost:8000`): FastAPI + Duck
 
 | # | Tarea | Responsable | Requiere red | Estado |
 |---|---|---|---|---|
-| A1 | Dependencias (fastapi, uvicorn, duckdb) y esqueleto `app/`, con `/api/comunas` y `/api/ficha` (punto y polígono), más tests con GPKG sintético | Claude Code | Sí (instalar) | hecho (ver el commit de A1) |
-| A2 | `/api/edificios` (DuckDB, bbox, tope y `altura_est`) y `/api/volumen` (huella, pisos, V_max/V_opt fase 1 con norma, fuente y confianza) | Claude Code | No | pendiente |
+| A1 | Dependencias (fastapi, uvicorn, duckdb) y esqueleto `app/`, con `/api/comunas` y `/api/ficha` (punto y polígono), más tests con GPKG sintético | Claude Code | Sí (instalar) | hecho (`40f9f6c`) |
+| A2 | `/api/edificios` (DuckDB, bbox, tope y `altura_est`) y `/api/volumen` (huella, pisos, V_max/V_opt fase 1 con norma, fuente y confianza) | Claude Code | No | en curso (Claude Code, 4-oct-2026) |
 | A3 | PMTiles locales de normativa y ocupación, `/tiles/{tema}.pmtiles` con *range requests*, y MapLibre/PMTiles servidos desde `app/static/` | Claude Code | Sí (bajar JS una vez) | pendiente |
 | A4 | Frontend: mapa base, buscador, selector de capas, panel de ficha, edificios 3D | Claude Code | No | pendiente |
 | A5 | Dibujo de predio y volumen 3D (existente sólido y envolvente V_opt translúcida) con marca BORRADOR | Claude Code | No | pendiente |
