@@ -1,0 +1,43 @@
+{
+  "region": "Región de Arica y Parinacota",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -70.399125,
+    -19.249342,
+    -68.891626,
+    -17.4784
+  ],
+  "n_edificios": 129472,
+  "mb": 14.4,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "15101",
+      "comuna": "Arica",
+      "n": 117837
+    },
+    {
+      "cut": "15102",
+      "comuna": "Camarones",
+      "n": 2753
+    },
+    {
+      "cut": "15201",
+      "comuna": "Putre",
+      "n": 5956
+    },
+    {
+      "cut": "15202",
+      "comuna": "General Lagos",
+      "n": 2926
+    }
+  ],
+  "n_en_bbox": 391897,
+  "fuera_de_la_dpa": 261393,
+  "de_otras_regiones": 1032,
+  "duracion_s": 33.2,
+  "archivo": "region_de_arica_y_parinacota.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

@@ -1,0 +1,188 @@
+{
+  "region": "Región del Bío-Bío",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -73.981443,
+    -38.512464,
+    -70.963273,
+    -36.423268
+  ],
+  "n_edificios": 988016,
+  "mb": 108.1,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "08101",
+      "comuna": "Concepción",
+      "n": 65829
+    },
+    {
+      "cut": "08102",
+      "comuna": "Coronel",
+      "n": 57987
+    },
+    {
+      "cut": "08103",
+      "comuna": "Chiguayante",
+      "n": 26542
+    },
+    {
+      "cut": "08104",
+      "comuna": "Florida",
+      "n": 26062
+    },
+    {
+      "cut": "08105",
+      "comuna": "Hualqui",
+      "n": 27318
+    },
+    {
+      "cut": "08106",
+      "comuna": "Lota",
+      "n": 17333
+    },
+    {
+      "cut": "08107",
+      "comuna": "Penco",
+      "n": 20491
+    },
+    {
+      "cut": "08108",
+      "comuna": "San Pedro de la Paz",
+      "n": 49664
+    },
+    {
+      "cut": "08109",
+      "comuna": "Santa Juana",
+      "n": 21482
+    },
+    {
+      "cut": "08110",
+      "comuna": "Talcahuano",
+      "n": 56026
+    },
+    {
+      "cut": "08111",
+      "comuna": "Tomé",
+      "n": 47687
+    },
+    {
+      "cut": "08112",
+      "comuna": "Hualpén",
+      "n": 19868
+    },
+    {
+      "cut": "08201",
+      "comuna": "Lebu",
+      "n": 21491
+    },
+    {
+      "cut": "08202",
+      "comuna": "Arauco",
+      "n": 36970
+    },
+    {
+      "cut": "08203",
+      "comuna": "Cañete",
+      "n": 42137
+    },
+    {
+      "cut": "08204",
+      "comuna": "Contulmo",
+      "n": 10716
+    },
+    {
+      "cut": "08205",
+      "comuna": "Curanilahue",
+      "n": 21236
+    },
+    {
+      "cut": "08206",
+      "comuna": "Los Alamos",
+      "n": 20395
+    },
+    {
+      "cut": "08207",
+      "comuna": "Tirúa",
+      "n": 17936
+    },
+    {
+      "cut": "08301",
+      "comuna": "Los Angeles",
+      "n": 146093
+    },
+    {
+      "cut": "08302",
+      "comuna": "Antuco",
+      "n": 7124
+    },
+    {
+      "cut": "08303",
+      "comuna": "Cabrero",
+      "n": 33145
+    },
+    {
+      "cut": "08304",
+      "comuna": "Laja",
+      "n": 22428
+    },
+    {
+      "cut": "08305",
+      "comuna": "Mulchén",
+      "n": 26544
+    },
+    {
+      "cut": "08306",
+      "comuna": "Nacimiento",
+      "n": 26029
+    },
+    {
+      "cut": "08307",
+      "comuna": "Negrete",
+      "n": 11464
+    },
+    {
+      "cut": "08308",
+      "comuna": "Quilaco",
+      "n": 7500
+    },
+    {
+      "cut": "08309",
+      "comuna": "Quilleco",
+      "n": 14422
+    },
+    {
+      "cut": "08310",
+      "comuna": "San Rosendo",
+      "n": 3850
+    },
+    {
+      "cut": "08311",
+      "comuna": "Santa Bárbara",
+      "n": 17127
+    },
+    {
+      "cut": "08312",
+      "comuna": "Tucapel",
+      "n": 17207
+    },
+    {
+      "cut": "08313",
+      "comuna": "Yumbel",
+      "n": 35802
+    },
+    {
+      "cut": "08314",
+      "comuna": "Alto Biobío",
+      "n": 12111
+    }
+  ],
+  "n_en_bbox": 1703029,
+  "fuera_de_la_dpa": 2527,
+  "de_otras_regiones": 712486,
+  "duracion_s": 250.4,
+  "archivo": "region_del_bio_bio.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

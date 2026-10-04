@@ -1,0 +1,283 @@
+{
+  "region": "Región Metropolitana de Santiago",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -71.734492,
+    -34.310669,
+    -69.749614,
+    -32.902479
+  ],
+  "n_edificios": 1994003,
+  "mb": 227.6,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "13101",
+      "comuna": "Santiago",
+      "n": 34426
+    },
+    {
+      "cut": "13102",
+      "comuna": "Cerrillos",
+      "n": 22861
+    },
+    {
+      "cut": "13103",
+      "comuna": "Cerro Navia",
+      "n": 22559
+    },
+    {
+      "cut": "13104",
+      "comuna": "Conchalí",
+      "n": 22169
+    },
+    {
+      "cut": "13105",
+      "comuna": "El Bosque",
+      "n": 26573
+    },
+    {
+      "cut": "13106",
+      "comuna": "Estación Central",
+      "n": 19500
+    },
+    {
+      "cut": "13107",
+      "comuna": "Huechuraba",
+      "n": 23495
+    },
+    {
+      "cut": "13108",
+      "comuna": "Independencia",
+      "n": 12094
+    },
+    {
+      "cut": "13109",
+      "comuna": "La Cisterna",
+      "n": 23604
+    },
+    {
+      "cut": "13110",
+      "comuna": "La Florida",
+      "n": 82125
+    },
+    {
+      "cut": "13111",
+      "comuna": "La Granja",
+      "n": 21518
+    },
+    {
+      "cut": "13112",
+      "comuna": "La Pintana",
+      "n": 28502
+    },
+    {
+      "cut": "13113",
+      "comuna": "La Reina",
+      "n": 34603
+    },
+    {
+      "cut": "13114",
+      "comuna": "Las Condes",
+      "n": 54715
+    },
+    {
+      "cut": "13115",
+      "comuna": "Lo Barnechea",
+      "n": 42076
+    },
+    {
+      "cut": "13116",
+      "comuna": "Lo Espejo",
+      "n": 10738
+    },
+    {
+      "cut": "13117",
+      "comuna": "Lo Prado",
+      "n": 14113
+    },
+    {
+      "cut": "13118",
+      "comuna": "Macul",
+      "n": 23192
+    },
+    {
+      "cut": "13119",
+      "comuna": "Maipú",
+      "n": 135127
+    },
+    {
+      "cut": "13120",
+      "comuna": "Ñuñoa",
+      "n": 27815
+    },
+    {
+      "cut": "13121",
+      "comuna": "Pedro Aguirre Cerda",
+      "n": 16914
+    },
+    {
+      "cut": "13122",
+      "comuna": "Peñalolén",
+      "n": 53677
+    },
+    {
+      "cut": "13123",
+      "comuna": "Providencia",
+      "n": 18094
+    },
+    {
+      "cut": "13124",
+      "comuna": "Pudahuel",
+      "n": 50850
+    },
+    {
+      "cut": "13125",
+      "comuna": "Quilicura",
+      "n": 38046
+    },
+    {
+      "cut": "13126",
+      "comuna": "Quinta Normal",
+      "n": 21015
+    },
+    {
+      "cut": "13127",
+      "comuna": "Recoleta",
+      "n": 29037
+    },
+    {
+      "cut": "13128",
+      "comuna": "Renca",
+      "n": 28366
+    },
+    {
+      "cut": "13129",
+      "comuna": "San Joaquín",
+      "n": 18596
+    },
+    {
+      "cut": "13130",
+      "comuna": "San Miguel",
+      "n": 17917
+    },
+    {
+      "cut": "13131",
+      "comuna": "San Ramón",
+      "n": 14237
+    },
+    {
+      "cut": "13132",
+      "comuna": "Vitacura",
+      "n": 20848
+    },
+    {
+      "cut": "13201",
+      "comuna": "Puente Alto",
+      "n": 123731
+    },
+    {
+      "cut": "13202",
+      "comuna": "Pirque",
+      "n": 32430
+    },
+    {
+      "cut": "13203",
+      "comuna": "San José de Maipo",
+      "n": 20287
+    },
+    {
+      "cut": "13301",
+      "comuna": "Colina",
+      "n": 91524
+    },
+    {
+      "cut": "13302",
+      "comuna": "Lampa",
+      "n": 90863
+    },
+    {
+      "cut": "13303",
+      "comuna": "Tiltil",
+      "n": 24644
+    },
+    {
+      "cut": "13401",
+      "comuna": "San Bernardo",
+      "n": 78036
+    },
+    {
+      "cut": "13402",
+      "comuna": "Buin",
+      "n": 59745
+    },
+    {
+      "cut": "13403",
+      "comuna": "Calera de Tango",
+      "n": 21569
+    },
+    {
+      "cut": "13404",
+      "comuna": "Paine",
+      "n": 73272
+    },
+    {
+      "cut": "13501",
+      "comuna": "Melipilla",
+      "n": 102250
+    },
+    {
+      "cut": "13502",
+      "comuna": "Alhué",
+      "n": 10884
+    },
+    {
+      "cut": "13503",
+      "comuna": "Curacaví",
+      "n": 39269
+    },
+    {
+      "cut": "13504",
+      "comuna": "María Pinto",
+      "n": 19163
+    },
+    {
+      "cut": "13505",
+      "comuna": "San Pedro",
+      "n": 24604
+    },
+    {
+      "cut": "13601",
+      "comuna": "Talagante",
+      "n": 42989
+    },
+    {
+      "cut": "13602",
+      "comuna": "El Monte",
+      "n": 21769
+    },
+    {
+      "cut": "13603",
+      "comuna": "Isla de Maipo",
+      "n": 31681
+    },
+    {
+      "cut": "13604",
+      "comuna": "Padre Hurtado",
+      "n": 37481
+    },
+    {
+      "cut": "13605",
+      "comuna": "Peñaflor",
+      "n": 38410
+    }
+  ],
+  "n_en_bbox": 3045178,
+  "fuera_de_la_dpa": 257,
+  "de_otras_regiones": 1050918,
+  "duracion_s": 496.8,
+  "archivo": "region_metropolitana_de_santiago.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

@@ -1,0 +1,128 @@
+{
+  "region": "Región de Ñuble",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -72.904408,
+    -37.217621,
+    -70.987303,
+    -35.98556
+  ],
+  "n_edificios": 522031,
+  "mb": 57.2,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "16101",
+      "comuna": "Chillán",
+      "n": 92416
+    },
+    {
+      "cut": "16102",
+      "comuna": "Bulnes",
+      "n": 26836
+    },
+    {
+      "cut": "16103",
+      "comuna": "Chillán Viejo",
+      "n": 21510
+    },
+    {
+      "cut": "16104",
+      "comuna": "El Carmen",
+      "n": 21836
+    },
+    {
+      "cut": "16105",
+      "comuna": "Pemuco",
+      "n": 13264
+    },
+    {
+      "cut": "16106",
+      "comuna": "Pinto",
+      "n": 19477
+    },
+    {
+      "cut": "16107",
+      "comuna": "Quillón",
+      "n": 37849
+    },
+    {
+      "cut": "16108",
+      "comuna": "San Ignacio",
+      "n": 26138
+    },
+    {
+      "cut": "16109",
+      "comuna": "Yungay",
+      "n": 26873
+    },
+    {
+      "cut": "16201",
+      "comuna": "Quirihue",
+      "n": 16332
+    },
+    {
+      "cut": "16202",
+      "comuna": "Cobquecura",
+      "n": 13652
+    },
+    {
+      "cut": "16203",
+      "comuna": "Coelemu",
+      "n": 18708
+    },
+    {
+      "cut": "16204",
+      "comuna": "Ninhue",
+      "n": 12311
+    },
+    {
+      "cut": "16205",
+      "comuna": "Portezuelo",
+      "n": 9817
+    },
+    {
+      "cut": "16206",
+      "comuna": "Ranquil",
+      "n": 12126
+    },
+    {
+      "cut": "16207",
+      "comuna": "Treguaco",
+      "n": 11253
+    },
+    {
+      "cut": "16301",
+      "comuna": "San Carlos",
+      "n": 55706
+    },
+    {
+      "cut": "16302",
+      "comuna": "Coihueco",
+      "n": 34538
+    },
+    {
+      "cut": "16303",
+      "comuna": "Ñiquén",
+      "n": 20708
+    },
+    {
+      "cut": "16304",
+      "comuna": "San Fabián",
+      "n": 8098
+    },
+    {
+      "cut": "16305",
+      "comuna": "San Nicolás",
+      "n": 22583
+    }
+  ],
+  "n_en_bbox": 757274,
+  "fuera_de_la_dpa": 430,
+  "de_otras_regiones": 234813,
+  "duracion_s": 114.9,
+  "archivo": "region_de_nuble.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

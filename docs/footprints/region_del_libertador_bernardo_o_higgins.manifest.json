@@ -1,0 +1,188 @@
+{
+  "region": "Región del Libertador Bernardo O'Higgins",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -72.076261,
+    -35.025436,
+    -69.98916,
+    -33.830573
+  ],
+  "n_edificios": 751340,
+  "mb": 83.3,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "06101",
+      "comuna": "Rancagua",
+      "n": 76856
+    },
+    {
+      "cut": "06102",
+      "comuna": "Codegua",
+      "n": 14155
+    },
+    {
+      "cut": "06103",
+      "comuna": "Coinco",
+      "n": 9674
+    },
+    {
+      "cut": "06104",
+      "comuna": "Coltauco",
+      "n": 22786
+    },
+    {
+      "cut": "06105",
+      "comuna": "Doñihue",
+      "n": 17817
+    },
+    {
+      "cut": "06106",
+      "comuna": "Graneros",
+      "n": 18108
+    },
+    {
+      "cut": "06107",
+      "comuna": "Las Cabras",
+      "n": 36562
+    },
+    {
+      "cut": "06108",
+      "comuna": "Machalí",
+      "n": 37312
+    },
+    {
+      "cut": "06109",
+      "comuna": "Malloa",
+      "n": 13952
+    },
+    {
+      "cut": "06110",
+      "comuna": "Mostazal",
+      "n": 24770
+    },
+    {
+      "cut": "06111",
+      "comuna": "Olivar",
+      "n": 11122
+    },
+    {
+      "cut": "06112",
+      "comuna": "Peumo",
+      "n": 9981
+    },
+    {
+      "cut": "06113",
+      "comuna": "Pichidegua",
+      "n": 24277
+    },
+    {
+      "cut": "06114",
+      "comuna": "Quinta de Tilcoco",
+      "n": 11935
+    },
+    {
+      "cut": "06115",
+      "comuna": "Rengo",
+      "n": 36777
+    },
+    {
+      "cut": "06116",
+      "comuna": "Requínoa",
+      "n": 27091
+    },
+    {
+      "cut": "06117",
+      "comuna": "San Vicente",
+      "n": 43418
+    },
+    {
+      "cut": "06201",
+      "comuna": "Pichilemu",
+      "n": 30366
+    },
+    {
+      "cut": "06202",
+      "comuna": "La Estrella",
+      "n": 10014
+    },
+    {
+      "cut": "06203",
+      "comuna": "Litueche",
+      "n": 14696
+    },
+    {
+      "cut": "06204",
+      "comuna": "Marchigüe",
+      "n": 16094
+    },
+    {
+      "cut": "06205",
+      "comuna": "Navidad",
+      "n": 18738
+    },
+    {
+      "cut": "06206",
+      "comuna": "Paredones",
+      "n": 16033
+    },
+    {
+      "cut": "06301",
+      "comuna": "San Fernando",
+      "n": 54923
+    },
+    {
+      "cut": "06302",
+      "comuna": "Chépica",
+      "n": 17055
+    },
+    {
+      "cut": "06303",
+      "comuna": "Chimbarongo",
+      "n": 33113
+    },
+    {
+      "cut": "06304",
+      "comuna": "Lolol",
+      "n": 13743
+    },
+    {
+      "cut": "06305",
+      "comuna": "Nancagua",
+      "n": 14409
+    },
+    {
+      "cut": "06306",
+      "comuna": "Palmilla",
+      "n": 13964
+    },
+    {
+      "cut": "06307",
+      "comuna": "Peralillo",
+      "n": 13362
+    },
+    {
+      "cut": "06308",
+      "comuna": "Placilla",
+      "n": 9837
+    },
+    {
+      "cut": "06309",
+      "comuna": "Pumanque",
+      "n": 8802
+    },
+    {
+      "cut": "06310",
+      "comuna": "Santa Cruz",
+      "n": 29598
+    }
+  ],
+  "n_en_bbox": 1009690,
+  "fuera_de_la_dpa": 552,
+  "de_otras_regiones": 257798,
+  "duracion_s": 102.9,
+  "archivo": "region_del_libertador_bernardo_o_higgins.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

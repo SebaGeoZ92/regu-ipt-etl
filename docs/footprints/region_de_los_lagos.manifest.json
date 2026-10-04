@@ -1,0 +1,173 @@
+{
+  "region": "Región de Los Lagos",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -74.86898,
+    -44.087069,
+    -71.561008,
+    -40.216539
+  ],
+  "n_edificios": 875346,
+  "mb": 94.4,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "10101",
+      "comuna": "Puerto Montt",
+      "n": 161146
+    },
+    {
+      "cut": "10102",
+      "comuna": "Calbuco",
+      "n": 45812
+    },
+    {
+      "cut": "10103",
+      "comuna": "Cochamó",
+      "n": 10352
+    },
+    {
+      "cut": "10104",
+      "comuna": "Fresia",
+      "n": 20715
+    },
+    {
+      "cut": "10105",
+      "comuna": "Frutillar",
+      "n": 24835
+    },
+    {
+      "cut": "10106",
+      "comuna": "Los Muermos",
+      "n": 31248
+    },
+    {
+      "cut": "10107",
+      "comuna": "Llanquihue",
+      "n": 15157
+    },
+    {
+      "cut": "10108",
+      "comuna": "Maullín",
+      "n": 25217
+    },
+    {
+      "cut": "10109",
+      "comuna": "Puerto Varas",
+      "n": 46065
+    },
+    {
+      "cut": "10201",
+      "comuna": "Castro",
+      "n": 43722
+    },
+    {
+      "cut": "10202",
+      "comuna": "Ancud",
+      "n": 50618
+    },
+    {
+      "cut": "10203",
+      "comuna": "Chonchi",
+      "n": 25994
+    },
+    {
+      "cut": "10204",
+      "comuna": "Curaco de Vélez",
+      "n": 8122
+    },
+    {
+      "cut": "10205",
+      "comuna": "Dalcahue",
+      "n": 23622
+    },
+    {
+      "cut": "10206",
+      "comuna": "Puqueldón",
+      "n": 8598
+    },
+    {
+      "cut": "10207",
+      "comuna": "Queilén",
+      "n": 9971
+    },
+    {
+      "cut": "10208",
+      "comuna": "Quellón",
+      "n": 30993
+    },
+    {
+      "cut": "10209",
+      "comuna": "Quemchi",
+      "n": 16227
+    },
+    {
+      "cut": "10210",
+      "comuna": "Quinchao",
+      "n": 13112
+    },
+    {
+      "cut": "10301",
+      "comuna": "Osorno",
+      "n": 95593
+    },
+    {
+      "cut": "10302",
+      "comuna": "Puerto Octay",
+      "n": 17097
+    },
+    {
+      "cut": "10303",
+      "comuna": "Purranque",
+      "n": 25305
+    },
+    {
+      "cut": "10304",
+      "comuna": "Puyehue",
+      "n": 19735
+    },
+    {
+      "cut": "10305",
+      "comuna": "Río Negro",
+      "n": 24645
+    },
+    {
+      "cut": "10306",
+      "comuna": "San Juan de la Costa",
+      "n": 22896
+    },
+    {
+      "cut": "10307",
+      "comuna": "San Pablo",
+      "n": 18872
+    },
+    {
+      "cut": "10401",
+      "comuna": "Chaitén",
+      "n": 11813
+    },
+    {
+      "cut": "10402",
+      "comuna": "Futaleufú",
+      "n": 6105
+    },
+    {
+      "cut": "10403",
+      "comuna": "Hualaihué",
+      "n": 15609
+    },
+    {
+      "cut": "10404",
+      "comuna": "Palena",
+      "n": 6150
+    }
+  ],
+  "n_en_bbox": 1022194,
+  "fuera_de_la_dpa": 32206,
+  "de_otras_regiones": 114642,
+  "duracion_s": 333.8,
+  "archivo": "region_de_los_lagos.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

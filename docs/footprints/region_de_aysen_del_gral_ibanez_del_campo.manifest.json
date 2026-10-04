@@ -1,0 +1,73 @@
+{
+  "region": "Región de Aysén del Gral.Ibañez del Campo",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -75.674783,
+    -49.231669,
+    -71.071333,
+    -43.618122
+  ],
+  "n_edificios": 159640,
+  "mb": 17.3,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "11101",
+      "comuna": "Coyhaique",
+      "n": 59991
+    },
+    {
+      "cut": "11102",
+      "comuna": "Lago Verde",
+      "n": 6122
+    },
+    {
+      "cut": "11201",
+      "comuna": "Aysén",
+      "n": 34019
+    },
+    {
+      "cut": "11202",
+      "comuna": "Cisnes",
+      "n": 14358
+    },
+    {
+      "cut": "11203",
+      "comuna": "Guaitecas",
+      "n": 1543
+    },
+    {
+      "cut": "11301",
+      "comuna": "Cochrane",
+      "n": 10289
+    },
+    {
+      "cut": "11302",
+      "comuna": "O'Higgins",
+      "n": 4477
+    },
+    {
+      "cut": "11303",
+      "comuna": "Tortel",
+      "n": 7078
+    },
+    {
+      "cut": "11401",
+      "comuna": "Chile Chico",
+      "n": 11053
+    },
+    {
+      "cut": "11402",
+      "comuna": "Río Ibáñez",
+      "n": 10710
+    }
+  ],
+  "n_en_bbox": 196440,
+  "fuera_de_la_dpa": 29688,
+  "de_otras_regiones": 7112,
+  "duracion_s": 763.2,
+  "archivo": "region_de_aysen_del_gral_ibanez_del_campo.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

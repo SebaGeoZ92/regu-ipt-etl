@@ -1,0 +1,173 @@
+{
+  "region": "Región del Maule",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -72.8059,
+    -36.563565,
+    -70.291747,
+    -34.664574
+  ],
+  "n_edificios": 971105,
+  "mb": 106.6,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "07101",
+      "comuna": "Talca",
+      "n": 101410
+    },
+    {
+      "cut": "07102",
+      "comuna": "Constitución",
+      "n": 38181
+    },
+    {
+      "cut": "07103",
+      "comuna": "Curepto",
+      "n": 17370
+    },
+    {
+      "cut": "07104",
+      "comuna": "Empedrado",
+      "n": 6379
+    },
+    {
+      "cut": "07105",
+      "comuna": "Maule",
+      "n": 41018
+    },
+    {
+      "cut": "07106",
+      "comuna": "Pelarco",
+      "n": 15712
+    },
+    {
+      "cut": "07107",
+      "comuna": "Pencahue",
+      "n": 16897
+    },
+    {
+      "cut": "07108",
+      "comuna": "Río Claro",
+      "n": 22045
+    },
+    {
+      "cut": "07109",
+      "comuna": "San Clemente",
+      "n": 58100
+    },
+    {
+      "cut": "07110",
+      "comuna": "San Rafael",
+      "n": 16127
+    },
+    {
+      "cut": "07201",
+      "comuna": "Cauquenes",
+      "n": 51913
+    },
+    {
+      "cut": "07202",
+      "comuna": "Chanco",
+      "n": 15731
+    },
+    {
+      "cut": "07203",
+      "comuna": "Pelluhue",
+      "n": 19432
+    },
+    {
+      "cut": "07301",
+      "comuna": "Curicó",
+      "n": 78365
+    },
+    {
+      "cut": "07302",
+      "comuna": "Hualañé",
+      "n": 12991
+    },
+    {
+      "cut": "07303",
+      "comuna": "Licantén",
+      "n": 9652
+    },
+    {
+      "cut": "07304",
+      "comuna": "Molina",
+      "n": 29721
+    },
+    {
+      "cut": "07305",
+      "comuna": "Rauco",
+      "n": 12722
+    },
+    {
+      "cut": "07306",
+      "comuna": "Romeral",
+      "n": 19268
+    },
+    {
+      "cut": "07307",
+      "comuna": "Sagrada Familia",
+      "n": 31601
+    },
+    {
+      "cut": "07308",
+      "comuna": "Teno",
+      "n": 37983
+    },
+    {
+      "cut": "07309",
+      "comuna": "Vichuquén",
+      "n": 12203
+    },
+    {
+      "cut": "07401",
+      "comuna": "Linares",
+      "n": 71090
+    },
+    {
+      "cut": "07402",
+      "comuna": "Colbún",
+      "n": 29155
+    },
+    {
+      "cut": "07403",
+      "comuna": "Longaví",
+      "n": 43387
+    },
+    {
+      "cut": "07404",
+      "comuna": "Parral",
+      "n": 43017
+    },
+    {
+      "cut": "07405",
+      "comuna": "Retiro",
+      "n": 33733
+    },
+    {
+      "cut": "07406",
+      "comuna": "San Javier",
+      "n": 46588
+    },
+    {
+      "cut": "07407",
+      "comuna": "Villa Alegre",
+      "n": 16850
+    },
+    {
+      "cut": "07408",
+      "comuna": "Yerbas Buenas",
+      "n": 22464
+    }
+  ],
+  "n_en_bbox": 1240259,
+  "fuera_de_la_dpa": 530,
+  "de_otras_regiones": 268624,
+  "duracion_s": 228.0,
+  "archivo": "region_del_maule.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

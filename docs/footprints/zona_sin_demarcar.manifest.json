@@ -1,0 +1,28 @@
+{
+  "region": "Zona sin demarcar",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -73.66376,
+    -49.832634,
+    -72.853099,
+    -49.147812
+  ],
+  "n_edificios": 2601,
+  "mb": 0.3,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "00000",
+      "comuna": "Zona sin demarcar",
+      "n": 2601
+    }
+  ],
+  "n_en_bbox": 3317,
+  "fuera_de_la_dpa": 163,
+  "de_otras_regiones": 553,
+  "duracion_s": 95.1,
+  "archivo": "zona_sin_demarcar.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

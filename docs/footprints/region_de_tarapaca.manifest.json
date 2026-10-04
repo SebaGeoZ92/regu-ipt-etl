@@ -1,0 +1,58 @@
+{
+  "region": "Región de Tarapacá",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -70.299151,
+    -21.650212,
+    -68.384871,
+    -18.916666
+  ],
+  "n_edificios": 144044,
+  "mb": 15.6,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "01101",
+      "comuna": "Iquique",
+      "n": 45010
+    },
+    {
+      "cut": "01107",
+      "comuna": "Alto Hospicio",
+      "n": 44888
+    },
+    {
+      "cut": "01401",
+      "comuna": "Pozo Almonte",
+      "n": 26736
+    },
+    {
+      "cut": "01402",
+      "comuna": "Camiña",
+      "n": 2635
+    },
+    {
+      "cut": "01403",
+      "comuna": "Colchane",
+      "n": 4089
+    },
+    {
+      "cut": "01404",
+      "comuna": "Huara",
+      "n": 8152
+    },
+    {
+      "cut": "01405",
+      "comuna": "Pica",
+      "n": 12534
+    }
+  ],
+  "n_en_bbox": 152423,
+  "fuera_de_la_dpa": 6090,
+  "de_otras_regiones": 2289,
+  "duracion_s": 70.0,
+  "archivo": "region_de_tarapaca.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

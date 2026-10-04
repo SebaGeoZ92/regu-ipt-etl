@@ -157,9 +157,9 @@ Huellas de Overture (ODbL) de todo Chile, por comuna, en `data/base/footprints/`
 |---|---|---|---|---|
 | S0 | Herramienta `run.py footprints descargar --region X` + `footprints estado`, test sintético (recorte, asignación por mayor área, columnas, manifiesto) | Claude Code (o Codex: el código y los tests no necesitan red) | No para los tests | hecho (`ccb95a9`) |
 | S1 | La Araucanía: descargar, validar contra los 181.475 de Temuco y medir tiempo y MB | Claude Code | Sí | hecho (`79adca0`) |
-| S2 | Norte: Arica, Tarapacá, Antofagasta, Atacama y Coquimbo | **Seba** (comando en lote) | Sí | pendiente |
-| S3 | Centro: Valparaíso, Metropolitana, O'Higgins, Maule y Ñuble | **Seba** | Sí | pendiente |
-| S4 | Sur: Biobío, Los Ríos, Los Lagos, Aysén y Magallanes | **Seba** | Sí | pendiente |
+| S2 | Norte: Arica, Tarapacá, Antofagasta, Atacama y Coquimbo | **Seba** (comando en lote) | Sí | hecho (2-oct-2026; manifiestos en `docs/footprints/`) |
+| S3 | Centro: Valparaíso, Metropolitana, O'Higgins, Maule y Ñuble | **Seba** | Sí | hecho (2-oct-2026) |
+| S4 | Sur: Biobío, Los Ríos, Los Lagos, Aysén y Magallanes | **Seba** | Sí | hecho (2-oct-2026) |
 | S5 | QA nacional: conteo y área por comuna, duplicados en bordes regionales, edificios fuera de la DPA, comunas con cobertura sospechosamente baja | Claude Code o Codex | No | pendiente |
 | S6 | Integración: la ficha predial informa n.º de edificios, m² de huella y pisos estimados; el volumen usa los footprints nacionales | Claude Code | No | pendiente |
 | S7 | Teselas: PMTiles de edificios por región, como capa aparte en el mapa, con atribución | Codex | No | pendiente |
@@ -172,6 +172,7 @@ Traspaso S1 (`79adca0`): La Araucanía tiene **1.091.394 edificios, 117,7 MB y t
 - El bbox trajo 1.366.800 edificios: 260.067 eran de regiones vecinas y 15.339 quedaban fuera de la DPA; ninguno de los dos se guarda.
 - Estimación nacional: unos 1,1 a 1,5 GB y entre 40 y 60 min, con la Metropolitana como la más pesada (vigilar la RAM).
 - Para seguir: Seba corre S2 a S4 con el comando de `docs/FOOTPRINTS_NACIONAL.md`, usando `--release 2026-09-23.1` para que todo el país quede en el mismo release.
+Traspaso S2 a S4: están las 16 regiones y "Zona sin demarcar", todas con `completa: true` y el release `2026-09-23.1`: **10.733.719 edificios, 1.177,6 MB**. Pendiente S5 (QA nacional), S6 y S7.
 Disco: desde el 2-oct-2026 los footprints viven en `D:\regu-data\footprints` (unos 207 GB libres); `footprints estado` informa la carpeta y el disco libre.
 
 ### Volúmenes (`docs/VOLUMENES.md`)
@@ -184,20 +185,27 @@ Cuatro volúmenes por predio (V_max, V_opt, V_calc, V_real), sus índices (IOV, 
 
 | # | Tarea | Responsable | Requiere red | Estado |
 |---|---|---|---|---|
-| V1 | Ocupación real del suelo por zona PRC, a nivel nacional con los footprints de `paths.footprints`: CSV por zona (ipt, zona, ha, m² de huella, coeficiente de ocupación existente, n.º de edificios) y capa para el mapa coloreada por coeficiente | Claude Code | No | **hecho para La Araucanía** (`efe37e0`, `215e42e`); el nacional espera S2 a S4 |
+| V1 | Ocupación real del suelo por zona PRC, a nivel nacional con los footprints de `paths.footprints`: CSV por zona (ipt, zona, ha, m² de huella, coeficiente de ocupación existente, n.º de edificios) y capa para el mapa coloreada por coeficiente | Claude Code | No | **hecho** (`efe37e0`, `215e42e`; corrida nacional del 4-oct-2026) |
 | V2 | V_calc por predio donde haya datos SII (piloto Temuco con catastral.cl, cuidando la cuota de 100/día y 20/min; nunca escribir la clave en el repo ni en logs). Pisos = superficie construida SII / área de huella, o `num_floors` de Overture | Claude Code | Sí | pendiente |
-| V3 | V_max y V_opt en la zona piloto, cuando Mario llene `normas_zona.csv` (V_opt de la fase 1 sin rasantes, declarado; rasantes en la fase 2 con geometría 3D) | Claude Code | No | pendiente: espera las normas de Mario |
+| V3 | V_max y V_opt en la zona piloto, cuando Mario llene `normas_zona.csv` (V_opt de la fase 1 sin rasantes, declarado; rasantes en la fase 2 con geometría 3D) | Claude Code | No | pendiente: las normas de ZH2 y ZHR5 de Temuco están en BORRADOR (4-oct-2026); falta que Mario las valide |
 | V4 | V_real con datos Z: primero `height` de Overture donde exista; luego nDSM (LiDAR o fotogrametría), revisando disponibilidad para Temuco y conectando con Living DEM | Claude Code | Sí | pendiente |
 | V5 | Salidas: CSV por predio (`rol, cut, zona, v_max, v_opt, v_calc, v_real, iov, remanente_m2, eficiencia, brecha_registro` más `fuente_*` y `confianza_*`), agregados por manzana, zona y comuna, y mapa con color por IOV y extrusión 3D | Claude Code | No | pendiente: después de V2 y V3 |
 
 Nota: V1 ya produce el coeficiente existente por zona; se compara con el normativo cuando haya tabla de normas validada.
 
 Traspaso V1: `etl/ocupacion.py` y `python run.py ocupacion [--region X] [--gpkg G]`, con test `test_ocupacion_sintetico`.
-- Procesa las regiones con manifiesto de footprints `completa: true` y escribe en `paths.out`: `ocupacion_zonas_<tag>_<fecha>.csv` (utf-8-sig), `ocupacion_<tag>_<fecha>.gpkg` (capa `ocupacion_zonas`, con `tramo` y `color`) y `ocupacion_qa_<tag>_<fecha>.json` (con la leyenda). `<tag>` es `nacional` solo cuando hay footprints de todas las regiones del GPKG. Tarda unos 2 min por La Araucanía, así que el país entero será del orden de 30 min; la RAM de la Metropolitana está por vigilar.
+- Procesa las regiones con manifiesto de footprints `completa: true` y escribe en `paths.out`: `ocupacion_zonas_<tag>_<fecha>.csv` (utf-8-sig), `ocupacion_<tag>_<fecha>.gpkg` (capa `ocupacion_zonas`, con `tramo` y `color`) y `ocupacion_qa_<tag>_<fecha>.json` (con la leyenda). `<tag>` es `nacional` solo cuando hay footprints de todas las regiones del GPKG. Corrida nacional del 4-oct-2026 (GPKG de build del 29-sep): **13 min**, proceso de unos 0,7 GB de RAM y sin problemas con la Metropolitana.
+- **Resultado nacional**: 5.668 zonas de 286 PRC, 489.577 ha, 4.736.092 edificios, 539,1 millones de m² de huella, coeficiente global 11,0 %, máximo 82 % (Independencia P-2-1-1, 0,41 ha) y ninguna zona sobre 100 %. Hay 285 zonas sin edificios (a revisar en S5: pueden ser áreas verdes y cauces, o comunas con huellas faltantes). "Zona sin demarcar" no tiene piezas PRC.
+- Temuco, para comparar con la norma BORRADOR (`normas_zona.csv`): ZH2 26,0 % existente frente a 0,5 (aislado) o 0,65 (pareado/continuo) normativo, y ZHR5 40,5 % frente a 0,7. El existente es sobre el área bruta, así que no es comparable de forma directa con el normativo, que se mide sobre el predio.
 - **Cómo se mide**: la huella es el edificio recortado contra la zona; el n.º de edificios cuenta cada uno una vez, por su punto representativo; las piezas con `riesgo=True` suman a su zona. El coeficiente es huella / área **bruta** de la zona (incluye calles y áreas verdes), por lo que **no es el coeficiente de ocupación de suelo de la OGUC** (que es sobre el predio neto). Sirve para comparar zonas, no para verificar la norma.
 - La Araucanía (GPKG nacional del 29-sep): 297 zonas, 23.142 ha, 278.576 edificios, 26,1 millones de m² de huella, coeficiente global 11,3 %, máximo 70 % (Temuco ZE1) y ninguna zona sobre 100 %. Hay 7 zonas sin edificios, todas agrícolas, de cauce o áreas verdes (Carahue Z-R9 y Z-R10, cauces de Freire y Loncoche, Cajón y Victoria).
 - Temuco: ZH3 33 %, ZHR6 37 %, ZM2 22 %; las extensivas ZE6 y ZHE5, cerca de 1 %.
-- Pendiente: la capa aún **no está en el HTML del mapa** (hoy tiene una sola fuente PMTiles). Para eso hay que decidir un selector de capas o un PMTiles aparte. Tampoco se probó la corrida nacional.
+- Pendiente: la capa aún **no está en el HTML del mapa** (hoy tiene una sola fuente PMTiles). Para eso hay que decidir un selector de capas o un PMTiles aparte.
+
+Traspaso normas ZH2 y ZHR5 de Temuco (4-oct-2026, **BORRADOR**): `data/base/normas_zona.csv` (no se versiona; respaldar) con 3 filas, una por agrupamiento (ZH2 aislado, ZH2 pareado/continuo y ZHR5 continuo). Origen: Ordenanza Local del PRC Temuco-Labranza (Res. N° 149/2010, actualizada a nov-2015), Art. 16 (tablas B 2 y B 8) y Art. 4 (antejardín). El PDF está en `D:\regu-data\raw\ordenanzas\`. El esquema ganó las columnas `fuente_por_valor` y `notas` (ver `docs/VOLUMEN_PILOTO.md`).
+- Vacíos anotados en `notas`: `altura_max_pisos` y `altura_piso_ref_m` (la ordenanza fija la altura solo en metros) y `distanciamiento_m` (solo se carga el de 4 m de la nota `*6` de ZH2 continuo/pareado).
+- **Discrepancia en la ordenanza, sin resolver: lo debe aclarar el arquitecto.** ZHR5 con altura adicional `*5`: el Caso Especial 3 sube la constructibilidad "en 2 puntos" (2,5 → 4,5), pero la tabla B 8 dice 3,5.
+- Por verificar con Mario: que no haya modificaciones posteriores a nov-2015 (el Portal IPT registra 3 modificaciones, la última del 13-jun-2015).
 
 ## Entorno
 

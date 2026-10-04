@@ -1,0 +1,98 @@
+{
+  "region": "Región de Coquimbo",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -71.737455,
+    -32.302156,
+    -69.789094,
+    -29.017697
+  ],
+  "n_edificios": 701661,
+  "mb": 75.5,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "04101",
+      "comuna": "La Serena",
+      "n": 150806
+    },
+    {
+      "cut": "04102",
+      "comuna": "Coquimbo",
+      "n": 159613
+    },
+    {
+      "cut": "04103",
+      "comuna": "Andacollo",
+      "n": 13874
+    },
+    {
+      "cut": "04104",
+      "comuna": "La Higuera",
+      "n": 11382
+    },
+    {
+      "cut": "04105",
+      "comuna": "Paihuano",
+      "n": 7796
+    },
+    {
+      "cut": "04106",
+      "comuna": "Vicuña",
+      "n": 28343
+    },
+    {
+      "cut": "04201",
+      "comuna": "Illapel",
+      "n": 36727
+    },
+    {
+      "cut": "04202",
+      "comuna": "Canela",
+      "n": 25703
+    },
+    {
+      "cut": "04203",
+      "comuna": "Los Vilos",
+      "n": 33963
+    },
+    {
+      "cut": "04204",
+      "comuna": "Salamanca",
+      "n": 33897
+    },
+    {
+      "cut": "04301",
+      "comuna": "Ovalle",
+      "n": 101298
+    },
+    {
+      "cut": "04302",
+      "comuna": "Combarbalá",
+      "n": 28138
+    },
+    {
+      "cut": "04303",
+      "comuna": "Monte Patria",
+      "n": 37884
+    },
+    {
+      "cut": "04304",
+      "comuna": "Punitaqui",
+      "n": 22756
+    },
+    {
+      "cut": "04305",
+      "comuna": "Río Hurtado",
+      "n": 9481
+    }
+  ],
+  "n_en_bbox": 734163,
+  "fuera_de_la_dpa": 3643,
+  "de_otras_regiones": 28859,
+  "duracion_s": 539.0,
+  "archivo": "region_de_coquimbo.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}

@@ -1,0 +1,83 @@
+{
+  "region": "Región de Los Ríos",
+  "release": "2026-09-23.1",
+  "bbox_wsen": [
+    -73.744927,
+    -40.701161,
+    -71.572099,
+    -39.267737
+  ],
+  "n_edificios": 410989,
+  "mb": 44.4,
+  "fecha_descarga": "2026-10-02",
+  "comunas": [
+    {
+      "cut": "14101",
+      "comuna": "Valdivia",
+      "n": 88167
+    },
+    {
+      "cut": "14102",
+      "comuna": "Corral",
+      "n": 8167
+    },
+    {
+      "cut": "14103",
+      "comuna": "Lanco",
+      "n": 22189
+    },
+    {
+      "cut": "14104",
+      "comuna": "Los Lagos",
+      "n": 29627
+    },
+    {
+      "cut": "14105",
+      "comuna": "Máfil",
+      "n": 11269
+    },
+    {
+      "cut": "14106",
+      "comuna": "Mariquina",
+      "n": 31031
+    },
+    {
+      "cut": "14107",
+      "comuna": "Paillaco",
+      "n": 25210
+    },
+    {
+      "cut": "14108",
+      "comuna": "Panguipulli",
+      "n": 59561
+    },
+    {
+      "cut": "14201",
+      "comuna": "La Unión",
+      "n": 47191
+    },
+    {
+      "cut": "14202",
+      "comuna": "Futrono",
+      "n": 21659
+    },
+    {
+      "cut": "14203",
+      "comuna": "Lago Ranco",
+      "n": 20692
+    },
+    {
+      "cut": "14204",
+      "comuna": "Río Bueno",
+      "n": 46226
+    }
+  ],
+  "n_en_bbox": 701103,
+  "fuera_de_la_dpa": 1623,
+  "de_otras_regiones": 288491,
+  "duracion_s": 132.3,
+  "archivo": "region_de_los_rios.parquet",
+  "licencia": "ODbL",
+  "atribucion": "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)",
+  "completa": true
+}
