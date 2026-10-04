@@ -8,6 +8,7 @@ from typing import Callable
 from etl.ficha import ultimo_gpkg
 
 MARCA_BORRADOR = "BORRADOR · uso interno"
+TEMAS_TESELAS = ("normativa", "ocupacion", "comunas")
 
 
 @dataclass
@@ -23,6 +24,7 @@ class Ajustes:
     f_region: str = "Region"
     registrar: bool = True                 # anotar la consulta en data/demanda (sin coordenadas)
     altura_piso_ref_m: float = 3.5         # parámetro del modelo (NO es norma): ver config.yaml, bloque `volumen`
+    dir_tiles: Path | None = None          # PMTiles locales (python run.py teselas); por defecto <dir_out>/tiles
 
     @classmethod
     def desde_cfg(cls, cfg: dict, ruta: Callable[[dict, str], Path], gpkg: Path | None = None) -> "Ajustes":
@@ -34,4 +36,10 @@ class Ajustes:
         return cls(gpkg=Path(g), dir_footprints=ruta(cfg, "footprints"), normas=ruta(cfg, "normas"), dir_out=out,
                    dir_demanda=ruta(cfg, "demanda"), comunas=ruta(cfg, "comunas"),
                    f_cut=c["field_cut"], f_nombre=c["field_nombre"], f_region=c["field_region"],
-                   altura_piso_ref_m=float((cfg.get("volumen") or {}).get("altura_piso_ref_m", 3.5)))
+                   altura_piso_ref_m=float((cfg.get("volumen") or {}).get("altura_piso_ref_m", 3.5)),
+                   dir_tiles=out / "tiles")
+
+    @property
+    def tiles(self) -> Path | None:
+        """Carpeta de teselas: dir_tiles, o <dir_out>/tiles si no se indicó."""
+        return self.dir_tiles or (Path(self.dir_out) / "tiles" if self.dir_out else None)

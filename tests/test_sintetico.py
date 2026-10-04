@@ -764,6 +764,52 @@ def test_app_edificios_volumen():
     print("  app edificios/volumen: OK")
 
 
+def test_app_teselas():
+    """A3 de Regu Suelo: teselas PMTiles de los tres temas, /tiles con Range (206), estáticos locales y errores claros."""
+    import pyogrio
+    from fastapi.testclient import TestClient
+    from app.main import crear_app
+    from etl import teselas as T
+    with tempfile.TemporaryDirectory() as d:
+        a = _app_fixture(Path(d))
+        c = TestClient(crear_app(a))
+        tiles = a.tiles
+        assert tiles == Path(a.dir_out) / "tiles"
+        # generación real con GDAL sobre los datos sintéticos
+        T.normativa(a.gpkg, tiles / "normativa.pmtiles")
+        T.comunas(a.comunas, "cod_comuna", "Comuna", "Region", tiles / "comunas.pmtiles")
+        oc = gpd.GeoDataFrame({"ipt": ["Temuco"], "zona": ["ZH2"], "ha": [100.0], "m2_huella": [26000.0], "coef_ocupacion": [0.26],
+                               "n_edificios": [500], "tramo": ["20 – 30 %"], "color": ["#2c7fb8"]},
+                              geometry=[box(-72.60, -38.74, -72.59, -38.73)], crs=4326)
+        oc.to_file(Path(d) / "ocupacion_nacional_20261004.gpkg", layer="ocupacion_zonas", driver="GPKG")
+        T.ocupacion(Path(d) / "ocupacion_nacional_20261004.gpkg", tiles / "ocupacion.pmtiles")
+        for tema, capa in (("normativa", "ipt"), ("ocupacion", "ocupacion"), ("comunas", "comunas")):
+            p = tiles / f"{tema}.pmtiles"
+            assert p.read_bytes()[:7] == b"PMTiles", tema
+            assert capa in [x[0] for x in pyogrio.list_layers(p)], (tema, pyogrio.list_layers(p))
+        # servicio: completo, con Range (lo que pide pmtiles.js) y con rango inválido
+        total = (tiles / "comunas.pmtiles").read_bytes()
+        r = c.get("/tiles/comunas.pmtiles")
+        assert r.status_code == 200 and r.content == total and r.headers.get("accept-ranges") == "bytes"
+        r = c.get("/tiles/comunas.pmtiles", headers={"Range": "bytes=0-126"})
+        assert r.status_code == 206 and r.content == total[:127] and r.headers["content-range"] == f"bytes 0-126/{len(total)}", r.headers
+        r = c.get("/tiles/comunas.pmtiles", headers={"Range": f"bytes={len(total) - 10}-"})
+        assert r.status_code == 206 and r.content == total[-10:]
+        assert c.get("/tiles/comunas.pmtiles", headers={"Range": f"bytes={len(total) + 5}-"}).status_code == 416
+        assert c.get("/tiles/otro.pmtiles").status_code == 404
+        (tiles / "ocupacion.pmtiles").unlink()
+        r = c.get("/tiles/ocupacion.pmtiles")
+        assert r.status_code == 404 and "run.py teselas ocupacion" in r.json()["detail"], r.text
+        # aplicación y librerías locales (sin CDN)
+        r = c.get("/")
+        assert r.status_code == 200 and "text/html" in r.headers["content-type"] and "/static/vendor/maplibre-gl.js" in r.text
+        assert "cdn." not in r.text and "unpkg" not in r.text, "la página no debe cargar nada de internet"
+        for f in ("maplibre-gl.js", "maplibre-gl.css", "pmtiles.js"):
+            assert c.get(f"/static/vendor/{f}").status_code == 200, f
+        assert c.get("/static/../main.py").status_code in (400, 404)
+    print("  app teselas: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -841,6 +887,7 @@ if __name__ == "__main__":
     test_app_sintetico()
     test_envolvente_sintetico()
     test_app_edificios_volumen()
+    test_app_teselas()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")

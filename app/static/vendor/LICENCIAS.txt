@@ -1,0 +1,6 @@
+Librerías de terceros servidas localmente (la aplicación funciona sin internet):
+
+- maplibre-gl 4.7.1 (maplibre-gl.js, maplibre-gl.css): BSD-3-Clause, ver LICENSE-maplibre-gl.txt.
+- pmtiles 3.2.1 (pmtiles.js): BSD-3-Clause (proyecto Protomaps; declarado en su package.json).
+
+Fuente de los archivos: https://cdn.jsdelivr.net/npm/<paquete>@<versión>/dist/. Mismas versiones que etl/mapa.py.

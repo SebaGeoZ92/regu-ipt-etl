@@ -444,6 +444,35 @@ def cmd_ocupacion(cfg, args):
     print(json.dumps({k: v for k, v in qa.items() if k != "leyenda"}, ensure_ascii=False, indent=2))
 
 
+def cmd_teselas(cfg, args):
+    """Teselas PMTiles locales de Regu Suelo en <paths.out>/tiles/: normativa | ocupacion | comunas (por defecto, las tres)."""
+    import time
+    from etl import teselas as T
+    from etl.ficha import ultimo_gpkg
+    out = ruta(cfg, "out")
+    temas = [args.archivo] if args.archivo else list(T.TEMAS)
+    if any(t not in T.TEMAS for t in temas):
+        sys.exit(f"Tema desconocido. Uso: python run.py teselas [{'|'.join(T.TEMAS)}]")
+    c = cfg["comunas"]
+    for i, tema in enumerate(temas, 1):
+        progreso.paso("teselas", tema, i, len(temas))
+        t0 = time.perf_counter()
+        destino = out / "tiles" / f"{tema}.pmtiles"
+        if tema == "normativa":
+            gpkg = Path(args.gpkg) if args.gpkg else ultimo_gpkg(out)
+            if not gpkg:
+                sys.exit("No hay GPKG de build (usa --gpkg)")
+            T.normativa(gpkg, destino)
+        elif tema == "ocupacion":
+            g = (sorted(out.glob("ocupacion_nacional_*.gpkg")) or sorted(out.glob("ocupacion_*.gpkg")) or [None])[-1]
+            if not g:
+                sys.exit("No hay capa de ocupación: corre `python run.py ocupacion`")
+            T.ocupacion(g, destino)
+        else:
+            T.comunas(ruta(cfg, "comunas"), c["field_cut"], c["field_nombre"], c["field_region"], destino)
+        log.info("%s: %s (%.1f MB, %.0f s)", tema, destino, destino.stat().st_size / 1e6, time.perf_counter() - t0)
+
+
 def cmd_volumen(cfg, args):
     """Piloto de volumen (docs/VOLUMEN_PILOTO.md), paso 0: candidatas | footprints | plantilla."""
     from etl import volumen as V
@@ -612,7 +641,7 @@ def cmd_importar_revision(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
-                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints", "ocupacion"])
+                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints", "ocupacion", "teselas"])
     ap.add_argument("--release", help="footprints: release de Overture (por defecto, el último)")
     ap.add_argument("--conservar-crudo", action="store_true", help="footprints: no borrar el parquet crudo de Overture")
     ap.add_argument("--cut", help="muestra: CUT(s) centrales separados por coma, p.ej. 09101")
@@ -636,7 +665,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
     cfg = cargar_cfg()
-    if args.cmd in ("discover", "download", "build", "all") or args.cmd == "ocupacion" or (args.cmd == "footprints" and args.archivo == "descargar"):
+    if args.cmd in ("discover", "download", "build", "all") or args.cmd in ("ocupacion", "teselas") or (args.cmd == "footprints" and args.archivo == "descargar"):
         # convención: procesos largos dejan su avance en data/out/progreso.log (ver etl/progreso.py)
         progreso.iniciar(ruta(cfg, "out") / "progreso.log")
     if args.cmd in ("discover", "all"):
@@ -665,6 +694,8 @@ def main():
         cmd_footprints(cfg, args)
     if args.cmd == "ocupacion":
         cmd_ocupacion(cfg, args)
+    if args.cmd == "teselas":
+        cmd_teselas(cfg, args)
 
 
 if __name__ == "__main__":

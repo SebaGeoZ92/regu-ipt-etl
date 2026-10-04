@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Regu Suelo · local</title>
+<link rel="stylesheet" href="/static/vendor/maplibre-gl.css">
+<style>
+  :root { --bg: #f3f4ef; --fg: #1f2622; --line: #d5d9cf; --warn: #6b4a07; --warn-bg: #fbf1d9; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #1b201d; --fg: #e8ebe4; --line: #3a423c; --warn: #f1d58a; --warn-bg: #3a2f10; } }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 14px system-ui, "Segoe UI", sans-serif; }
+  #mapa { position: absolute; inset: 0; }
+  #capas { position: absolute; top: 10px; left: 10px; z-index: 2; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  #capas label { display: block; margin: 2px 0; }
+  #estado { position: absolute; bottom: 10px; left: 10px; z-index: 2; background: var(--warn-bg); color: var(--warn); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="mapa"></div>
+<div id="capas">
+  <label><input type="checkbox" data-capa="normativa" checked> Normativa</label>
+  <label><input type="checkbox" data-capa="ocupacion"> Ocupación</label>
+  <label><input type="checkbox" data-capa="comunas" checked> Comunas</label>
+</div>
+<div id="estado">Regu Suelo · local · verificación de teselas (A3)</div>
+<script src="/static/vendor/maplibre-gl.js"></script>
+<script src="/static/vendor/pmtiles.js"></script>
+<script>
+  const COLORES = {U1: "#b0442b", U2: "#e08a3c", U3: "#8c5aa0", E: "#d8bf3f", R1: "#5c8f52", R2: "#cfd2bf"};
+  const protocolo = new pmtiles.Protocol();
+  maplibregl.addProtocol("pmtiles", protocolo.tilev4);
+  const url = (t) => "pmtiles://" + location.origin + "/tiles/" + t + ".pmtiles";
+  const porClase = ["match", ["get", "clase"], ...Object.entries(COLORES).flat(), "#999999"];
+  const mapa = new maplibregl.Map({
+    container: "mapa", center: [-72.59, -38.74], zoom: 11, hash: true,
+    style: {version: 8, sources: {
+      normativa: {type: "vector", url: url("normativa")},
+      ocupacion: {type: "vector", url: url("ocupacion")},
+      comunas: {type: "vector", url: url("comunas")}},
+      layers: [
+        {id: "fondo", type: "background", paint: {"background-color": "#e6e8df"}},
+        {id: "normativa", type: "fill", source: "normativa", "source-layer": "ipt", paint: {"fill-color": porClase, "fill-opacity": 0.7}},
+        {id: "ocupacion", type: "fill", source: "ocupacion", "source-layer": "ocupacion", layout: {visibility: "none"}, paint: {"fill-color": ["get", "color"], "fill-opacity": 0.85}},
+        {id: "comunas", type: "line", source: "comunas", "source-layer": "comunas", paint: {"line-color": "#2b332d", "line-width": 1}}]},
+  });
+  mapa.addControl(new maplibregl.NavigationControl(), "top-right");
+  document.querySelectorAll("#capas input").forEach((i) => i.addEventListener("change", () =>
+    mapa.setLayoutProperty(i.dataset.capa, "visibility", i.checked ? "visible" : "none")));
+  mapa.on("error", (e) => { document.getElementById("estado").textContent = "Error: " + (e.error && e.error.message || e); });
+</script>
+</body>
+</html>

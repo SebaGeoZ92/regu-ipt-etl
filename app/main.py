@@ -7,8 +7,12 @@ from __future__ import annotations
 
 import time
 
+from pathlib import Path
+
 import geopandas as gpd
 from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
 
@@ -17,8 +21,9 @@ from etl.ficha import ficha as calcular_ficha
 from etl.normalize import norm_txt
 
 from . import datos, edificios
-from .ajustes import MARCA_BORRADOR, Ajustes
+from .ajustes import MARCA_BORRADOR, TEMAS_TESELAS, Ajustes
 
+STATIC = Path(__file__).parent / "static"
 CRS_AREA = "ESRI:102033"
 MAX_PREDIO_M2 = 500_000.0       # 50 ha: más que eso no es un predio
 
@@ -61,6 +66,22 @@ def crear_app(a: Ajustes) -> FastAPI:
     @app.get("/api/comunas")
     def api_comunas():
         return datos.comunas(a)
+
+    @app.get("/tiles/{tema}.pmtiles")
+    def tiles(tema: str):
+        """PMTiles locales. FileResponse atiende `Range` (206), que es lo que usa la librería pmtiles del navegador."""
+        if tema not in TEMAS_TESELAS:
+            raise HTTPException(404, f"Tema desconocido: {tema}")
+        p = a.tiles / f"{tema}.pmtiles" if a.tiles else None
+        if p is None or not p.exists():
+            raise HTTPException(404, f"Falta la tesela {tema}: corre `python run.py teselas {tema}`")
+        return FileResponse(p, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
+
+    @app.get("/", include_in_schema=False)
+    def inicio():
+        return FileResponse(STATIC / "index.html", media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+    app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.get("/api/ficha")
     def api_ficha_punto(lon: float = Query(..., ge=-180, le=180), lat: float = Query(..., ge=-90, le=90)):
