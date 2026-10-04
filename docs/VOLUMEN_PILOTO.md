@@ -25,10 +25,17 @@ Luego genera `data/base/normas_zona.csv` con una fila para esa zona y las column
 ```
 ipt_nombre, zona, ocupacion_max, constructibilidad_max, altura_max_pisos, altura_max_m,
 altura_piso_ref_m, antejardin_m, distanciamiento_m, agrupamiento, rasante_grados,
-densidad_max, articulo_fuente, validado_por, fecha_validacion, estado
+densidad_max, articulo_fuente, fuente_por_valor, notas, validado_por, fecha_validacion, estado
 ```
 
 `estado`: `FICTICIO` | `BORRADOR` | `VALIDADO`. Solo `VALIDADO` se muestra al público.
+
+- `articulo_fuente`: la ordenanza, el artículo y la tabla de origen de la fila.
+- `fuente_por_valor`: el artículo y la página de cada valor, en la forma `campo: Art. N, tabla X, p. P; ...`.
+- `notas`: los vacíos (valores que la ordenanza no fija, con el motivo), las excepciones y las discrepancias.
+- Un valor que la ordenanza no fija queda **vacío** y se anota en `notas`; nunca se completa con la OGUC ni con supuestos.
+- Una zona con valores distintos por sistema de agrupamiento (p. ej. aislado y pareado/continuo) va en **una fila por agrupamiento**, con el mismo `ipt_nombre` y `zona`. Quien lea el archivo debe tratar la clave como `(ipt_nombre, zona, agrupamiento)`.
+- Decimales con punto (`0.5`). Los campos con varios valores (antejardín según clase de vía, rasante por orientación) van como texto.
 
 ## Datos de entrada
 

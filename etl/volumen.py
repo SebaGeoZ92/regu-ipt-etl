@@ -23,7 +23,7 @@ from .normalize import norm_txt
 
 COLUMNAS_NORMAS = ["ipt_nombre", "zona", "ocupacion_max", "constructibilidad_max", "altura_max_pisos", "altura_max_m",
                    "altura_piso_ref_m", "antejardin_m", "distanciamiento_m", "agrupamiento", "rasante_grados",
-                   "densidad_max", "articulo_fuente", "validado_por", "fecha_validacion", "estado"]
+                   "densidad_max", "articulo_fuente", "fuente_por_valor", "notas", "validado_por", "fecha_validacion", "estado"]
 ESTADOS_NORMA = {"FICTICIO", "BORRADOR", "VALIDADO"}
 ATRIBUCION_OVERTURE = "© OpenStreetMap contributors, Overture Maps Foundation (ODbL)"
 _RE_RESIDENCIAL = re.compile(r"RESIDENC|HABITAC|VIVIEND|\bH\s?\d|\bZH|\bZR\d", re.I)
