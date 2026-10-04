@@ -216,6 +216,19 @@ Traspaso normas ZH2 y ZHR5 de Temuco (4-oct-2026, **BORRADOR**): `normas/normas_
 - **Discrepancia en la ordenanza, sin resolver: lo debe aclarar el arquitecto.** ZHR5 con altura adicional `*5`: el Caso Especial 3 sube la constructibilidad "en 2 puntos" (2,5 → 4,5), pero la tabla B 8 dice 3,5.
 - Por verificar con Mario: que no haya modificaciones posteriores a nov-2015 (el Portal IPT registra 3 modificaciones, la última del 13-jun-2015).
 
+### Regu Suelo local (`docs/REGU_SUELO_LOCAL.md`)
+
+Aplicación local (`python run.py app`, `http://localhost:8000`): FastAPI + DuckDB spatial + MapLibre/PMTiles servidos localmente. **Solo local; muestra normas BORRADOR marcadas "BORRADOR · uso interno"; no se publica.** Reglas: las normas no se inventan, no se muestran propietarios ni brechas de registro por predio, y las claves van solo en variables de entorno.
+
+| # | Tarea | Responsable | Requiere red | Estado |
+|---|---|---|---|---|
+| A1 | Dependencias (fastapi, uvicorn, duckdb) y esqueleto `app/`, con `/api/comunas` y `/api/ficha` (punto y polígono), más tests con GPKG sintético | Claude Code | Sí (instalar) | en curso (Claude Code, 4-oct-2026) |
+| A2 | `/api/edificios` (DuckDB, bbox, tope y `altura_est`) y `/api/volumen` (huella, pisos, V_max/V_opt fase 1 con norma, fuente y confianza) | Claude Code | No | pendiente |
+| A3 | PMTiles locales de normativa y ocupación, `/tiles/{tema}.pmtiles` con *range requests*, y MapLibre/PMTiles servidos desde `app/static/` | Claude Code | Sí (bajar JS una vez) | pendiente |
+| A4 | Frontend: mapa base, buscador, selector de capas, panel de ficha, edificios 3D | Claude Code | No | pendiente |
+| A5 | Dibujo de predio y volumen 3D (existente sólido y envolvente V_opt translúcida) con marca BORRADOR | Claude Code | No | pendiente |
+| A6 | `/api/lamina` con `sig/` y botón "Lámina PDF"; `python run.py app`; criterios de aceptación y cierre | Claude Code | No | pendiente |
+
 ## Entorno
 
 - Windows + PowerShell, venv en `.venv` (`.venv\Scripts\activate`), Python 3.12, pandas 3.x, geopandas 1.1.
