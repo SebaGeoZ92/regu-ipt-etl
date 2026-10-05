@@ -1,7 +1,7 @@
 id: clima_precipitacion_anual
 nombre: Precipitación anual
 categoria: clima
-estado: propuesta
+estado: activa
 tipo: raster
 fuente:
   nombre: WorldClim 2.1 (BIO12, promedio 1970-2000)

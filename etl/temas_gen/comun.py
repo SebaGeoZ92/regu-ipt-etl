@@ -85,7 +85,11 @@ def mascara_chile(cfg: dict, *, buffer_grados: float = 0.05, simplificar: float 
     c = cfg["comunas"]
     if region:
         g = g[g[c["field_region"]].astype(str).str.contains(region, case=False, regex=False)]
-    geom = shapely.union_all(g.geometry.values)
+    validas = shapely.make_valid(g.geometry.values)       # la BCN trae geometrías inválidas (TopologyException al unirlas)
+    try:
+        geom = shapely.union_all(validas)
+    except shapely.errors.GEOSException:
+        geom = shapely.union_all(shapely.buffer(validas, 1e-6))
     if continental:
         geom = geom.intersection(box(*BBOX_CHILE_CONTINENTAL))
     return geom.simplify(simplificar).buffer(buffer_grados)

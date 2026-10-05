@@ -1180,6 +1180,87 @@ def test_temas_generadores_comunes():
     print("  temas generadores comunes: OK")
 
 
+def test_temas_worldclim():
+    """El generador de clima: baja el zip (aquí, uno falso con un GeoTIFF), extrae solo su variable y la tesela con la máscara."""
+    import http.server
+    import io
+    import socketserver
+    import threading
+    import zipfile
+    import rasterio
+    from rasterio.transform import from_bounds
+    from etl import raster_tiles as R
+    from etl import temas as T
+    from etl.temas_gen import worldclim
+
+    def tif_bytes(valor):
+        b = io.BytesIO()
+        with rasterio.io.MemoryFile() as mf:
+            with mf.open(driver="GTiff", height=40, width=40, count=1, dtype="float32", crs="EPSG:4326", transform=from_bounds(-73, -40, -71, -38, 40, 40), nodata=-3.4e38) as dst:
+                dst.write(np.full((40, 40), valor, dtype="float32"), 1)
+            b.write(mf.read())
+        return b.getvalue()
+
+    zbytes = io.BytesIO()
+    with zipfile.ZipFile(zbytes, "w") as z:
+        z.writestr("wc2.1_2.5m_bio_1.tif", tif_bytes(10.0))
+        z.writestr("wc2.1_2.5m_bio_12.tif", tif_bytes(1000.0))
+    cuerpo = zbytes.getvalue()
+    visitas = []
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(cuerpo)))
+            self.end_headers()
+
+        def do_GET(self):
+            visitas.append(self.path)
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(cuerpo)))
+            self.end_headers()
+            self.wfile.write(cuerpo)
+
+    with socketserver.TCPServer(("127.0.0.1", 0), H) as srv:
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{srv.server_address[1]}/wc2.1_2.5m_bio.zip"
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            gpd.GeoDataFrame({"cod_comuna": [9101], "Comuna": ["A"], "Region": ["Región de La Araucanía"]},
+                             geometry=[box(-72.9, -39.9, -71.1, -38.1)], crs=4326).to_file(d / "c.gpkg", driver="GPKG")
+            cfg = {"paths": {"comunas": str(d / "c.gpkg"), "raw": str(d / "raw"), "out": str(d / "out")},
+                   "comunas": {"field_cut": "cod_comuna", "field_nombre": "Comuna", "field_region": "Region"}}
+            base = {"nombre": "Prueba", "categoria": "clima", "estado": "mapeada", "tipo": "raster", "zoom": [5, 7],
+                    "fuente": {"nombre": "WorldClim de prueba", "url": url, "fecha_dato": "1970-2000", "licencia": "Licencia de prueba", "licencia_verificada": False,
+                               "atribucion": "Atribución de prueba", "acceso": {"verificado": True}},
+                    "generacion": {"generador": "worldclim_bio"},
+                    "estilo": {"interpolacion": "lineal", "rampa": [[0, "#000000"], [20, "#ff0000"]]}}
+            t1 = {**base, "id": "t_bio1", "generacion": {"generador": "worldclim_bio", "parametros": {"archivo": "wc2.1_2.5m_bio_1.tif"}}}
+            t2 = {**base, "id": "t_bio12", "estilo": {"interpolacion": "lineal", "factor": 0.02, "rampa": [[0, "#000000"], [20, "#ff0000"]]},
+                  "generacion": {"generador": "worldclim_bio", "parametros": {"archivo": "wc2.1_2.5m_bio_12.tif"}}}
+            cat = {"t_bio1": t1, "t_bio12": t2}
+            assert all(T.validar(c) == [] for c in cat.values()), [T.validar(c) for c in cat.values()]
+            p1 = T.generar("t_bio1", cat, d / "raw", d / "out", cfg)
+            p2 = T.generar("t_bio12", cat, d / "raw", d / "out", cfg)
+            assert len(visitas) == 1, "el zip compartido se baja una sola vez"
+            assert (d / "raw" / "temas" / "_compartido" / "wc2.1_2.5m_bio.zip").exists() and (d / "raw" / "temas" / "t_bio1" / "wc2.1_2.5m_bio_1.tif").exists()
+            assert not (d / "raw" / "temas" / "t_bio1" / "wc2.1_2.5m_bio_12.tif").exists(), "cada tema extrae solo su variable"
+            assert R.encabezado(p1)["metadata"]["attribution"] == "Atribución de prueba"
+            rojo = lambda p: int(R.leer_tesela(p, 7, *[getattr(__import__("mercantile").tile(-72.0, -39.0, 7), k) for k in ("x", "y")])[100, 100][0])  # noqa: E731
+            assert abs(rojo(p1) - 128) < 4, "10 °C en una rampa 0..20 → rojo medio"
+            assert rojo(p2) > 250, "1000 × factor 0,02 = 20: rojo pleno en la rampa 0..20"
+            try:
+                worldclim.extraer(d / "raw" / "temas" / "_compartido" / "wc2.1_2.5m_bio.zip", "no_existe.tif", d / "x")
+                raise AssertionError("debía fallar")
+            except FileNotFoundError as ex:
+                assert "no_existe.tif" in str(ex)
+        srv.shutdown()
+    print("  temas worldclim: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -1263,6 +1344,7 @@ if __name__ == "__main__":
     test_temas_catalogo()
     test_raster_tiles()
     test_temas_generadores_comunes()
+    test_temas_worldclim()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
