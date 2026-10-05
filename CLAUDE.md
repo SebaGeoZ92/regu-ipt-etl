@@ -264,8 +264,8 @@ Base del **SIG propio**: generador local de mapas de ubicación, suelo, clima, r
 | # | Tarea | Responsable | Requiere red | Estado |
 |---|---|---|---|---|
 | M0 | Especificación y backlog | Claude Code | Sí (Paso 0) | hecho (este commit) |
-| M1 | Catálogo `temas/*.yaml`, `temas/_esquema.json`, `etl/temas.py` y `python run.py temas estado\|validar\|generar` | Claude Code | No | en curso (Claude Code, 4-oct-2026) |
-| M2 | Teselador ráster: GeoTIFF → rampa de colores → XYZ → MBTiles → PMTiles (`etl/raster_tiles.py`), con test sintético | Claude Code | Sí (instalar) | pendiente |
+| M1 | Catálogo `temas/*.yaml`, `temas/_esquema.json`, `etl/temas.py` y `python run.py temas estado\|validar\|generar` | Claude Code | No | hecho (`e23f1ad`): siete contratos en estado `propuesta` |
+| M2 | Teselador ráster: GeoTIFF → rampa de colores → XYZ → MBTiles → PMTiles (`etl/raster_tiles.py`), con test sintético | Claude Code | Sí (instalar) | en curso (Claude Code, 4-oct-2026) |
 | M3 | Temas iniciales: ubicación (regiones y comunas), clima (WorldClim: temperatura y precipitación anuales), suelo (SoilGrids), relieve (GLO-30, piloto La Araucanía) y cobertura (WorldCover) | Claude Code | Sí (descargas) | pendiente |
 | M4 | App: `/api/temas`, `/tiles/temas/{id}.pmtiles` y selector «Mapa temático» con leyenda, atribución y transparencia | Claude Code | No | pendiente |
 | M5 | Valor al clic (muestreo del ráster) y *ficha de lugar* con suelo, clima y relieve | Claude Code | No | pendiente |

@@ -1027,6 +1027,84 @@ def test_temas_catalogo():
     print("  temas catálogo: OK")
 
 
+def test_raster_tiles():
+    """M2 de mapas temáticos: GeoTIFF → rampa → PMTiles. Colores por píxel, nodata, máscara, categorías, factor y UTM."""
+    import mercantile
+    import rasterio
+    from rasterio.transform import from_bounds
+    from etl import raster_tiles as R
+
+    def px(lon, lat, z):                      # (x, y, fila, columna) del píxel de un punto en su tesela
+        t = mercantile.tile(lon, lat, z)
+        x0, y0, x1, y1 = mercantile.xy_bounds(t)
+        x, y = mercantile.xy(lon, lat)
+        return t.x, t.y, int((y1 - y) / (y1 - y0) * 256), int((x - x0) / (x1 - x0) * 256)
+
+    def color(pm, lon, lat, z):
+        x, y, i, j = px(lon, lat, z)
+        img = R.leer_tesela(pm, z, x, y)
+        return None if img is None else img[i, j]
+
+    def escribir(ruta, datos, bounds, crs="EPSG:4326", nodata=None, dtype="float32"):
+        h, w = datos.shape
+        with rasterio.open(ruta, "w", driver="GTiff", height=h, width=w, count=1, dtype=dtype, crs=crs,
+                           transform=from_bounds(*bounds, w, h), nodata=nodata) as dst:
+            dst.write(datos.astype(dtype), 1)
+
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        rampa = [[0, "#000000"], [100, "#ff0000"]]
+        # 1) gradiente lineal oeste→este de 0 a 100 en lon -75..-70, con un hueco nodata
+        g = np.linspace(0, 100, 100)[None, :].repeat(100, 0).astype("float32")
+        g[40:50, 40:50] = -9999                                           # hueco: lon -73,0..-72,5 y lat -37,0..-37,5
+        escribir(d / "g.tif", g, (-75, -40, -70, -35), nodata=-9999)
+        r = R.teselar_raster(d / "g.tif", d / "g.pmtiles", rampa, zoom=(3, 7), nombre="grad", atribucion="atrib X")
+        h = R.encabezado(r["destino"])
+        assert h["min_zoom"] == 3 and h["max_zoom"] == 7 and "PNG" in h["tile_type"] and h["metadata"]["attribution"] == "atrib X", h
+        assert r["tiles"] > 5 and r["mb"] >= 0
+        for lon in (-74.5, -73.0, -72.0, -70.6):
+            c = color(r["destino"], lon, -38.5, 7)
+            esperado = (lon + 75) / 5 * 100 * 2.55
+            assert c[3] == 255 and abs(int(c[0]) - esperado) < 9 and c[1] == 0 and c[2] == 0, (lon, c, esperado)
+        assert color(r["destino"], -72.75, -37.2, 7)[3] == 0, "nodata transparente"
+        assert color(r["destino"], -80.0, -38.5, 7) is None or color(r["destino"], -80.0, -38.5, 7)[3] == 0, "fuera del ráster"
+        # 2) máscara: solo la mitad oeste (lon < -72,5)
+        r2 = R.teselar_raster(d / "g.tif", d / "g_m.pmtiles", rampa, zoom=(3, 7), mascara=box(-76, -41, -72.5, -34))
+        assert color(r2["destino"], -74.0, -38.5, 7)[3] == 255 and (color(r2["destino"], -71.0, -38.5, 7) is None or color(r2["destino"], -71.0, -38.5, 7)[3] == 0)
+        assert r2["tiles"] < r["tiles"], "las teselas fuera de la máscara no se escriben"
+        # 3) categórico (escalón, vecino más cercano): clases 10, 20 y 30 en bloques; 0 = sin dato
+        cat = np.zeros((90, 90), dtype="uint8")
+        cat[:, :30], cat[:, 30:60], cat[:, 60:] = 10, 20, 30
+        escribir(d / "c.tif", cat, (-75, -40, -72, -37), dtype="uint8", nodata=0)
+        rampa_c = [[10, "#006400"], [20, "#ffbb22"], [30, "#ffff4c"]]
+        r3 = R.teselar_raster(d / "c.tif", d / "c.pmtiles", rampa_c, interpolacion="escalon", zoom=(5, 7))
+        assert list(color(r3["destino"], -74.5, -38.5, 7)[:3]) == [0, 100, 0] and list(color(r3["destino"], -73.5, -38.5, 7)[:3]) == [255, 187, 34]
+        assert list(color(r3["destino"], -72.5, -38.5, 7)[:3]) == [255, 255, 76], "sin colores intermedios inventados"
+        # 4) factor de unidades: 0..1000 con factor 0,1 equivale a 0..100
+        escribir(d / "f.tif", g * 10, (-75, -40, -70, -35))
+        r4 = R.teselar_raster(d / "f.tif", d / "f.pmtiles", rampa, factor=0.1, zoom=(5, 7))
+        assert abs(int(color(r4["destino"], -72.5, -38.5, 7)[0]) - 127) < 9
+        # 5) fuente en otra proyección (UTM 18S): valor constante 50 → rojo medio
+        escribir(d / "u.tif", np.full((60, 60), 50, dtype="float32"), (700000, 5700000, 760000, 5760000), crs="EPSG:32718")
+        r5 = R.teselar_raster(d / "u.tif", d / "u.pmtiles", rampa, zoom=(7, 8))
+        c = color(r5["destino"], -72.1, -38.7, 8)
+        assert c is not None and c[3] == 255 and abs(int(c[0]) - 127) < 3, c
+        # 6) sin solapamiento entre la máscara y el ráster: error claro y sin archivos a medias
+        try:
+            R.teselar_raster(d / "g.tif", d / "x.pmtiles", rampa, zoom=(3, 5), mascara=box(10, 10, 11, 11))
+            raise AssertionError("debía fallar")
+        except ValueError as ex:
+            assert "Ninguna tesela" in str(ex) or "solap" in str(ex).lower()
+        assert not (d / "x.pmtiles").exists() and not list(d.glob("*.tmp"))
+        # colorear: rampa por escalones y valores fuera de rango
+        v = np.array([[5.0, 10.0, 15.0, 20.0, 99.0]])
+        im = R.colorear(v, np.ones_like(v, dtype=bool), rampa_c, "escalon")
+        assert [int(x) for x in im[0, :, 3]] == [0, 255, 255, 255, 255] and list(im[0, 4, :3]) == [255, 255, 76]
+        im = R.colorear(np.array([[-50.0, 200.0]]), np.ones((1, 2), dtype=bool), rampa, "lineal")
+        assert list(im[0, 0, :3]) == [0, 0, 0] and list(im[0, 1, :3]) == [255, 0, 0], "lineal se detiene en los extremos"
+    print("  raster tiles: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -1108,6 +1186,7 @@ if __name__ == "__main__":
     test_app_basemap()
     test_app_lamina()
     test_temas_catalogo()
+    test_raster_tiles()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
