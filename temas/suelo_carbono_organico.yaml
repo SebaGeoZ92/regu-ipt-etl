@@ -1,7 +1,7 @@
 id: suelo_carbono_organico
 nombre: Carbono orgánico del suelo superficial (0-5 cm)
 categoria: suelo
-estado: propuesta
+estado: activa
 tipo: raster
 fuente:
   nombre: SoilGrids 2.0, carbono orgánico 0-5 cm (media)
@@ -13,6 +13,7 @@ fuente:
   licencia_verificada: true
   uso_comercial: si
   atribucion: "ISRIC, World Soil Information. SoilGrids 2.0 (Poggio et al., 2021, SOIL 7: 217-240), CC BY 4.0"
+  acceso: {verificado: true, fecha_verificacion: "2026-10-04", como: "VRT remoto (6 MB) sobre teselas COG; lectura por ventanas con GDAL", tamano_mb: 6}
 generacion:
   generador: soilgrids
   parametros: {variable: soc, profundidad: 0-5cm}

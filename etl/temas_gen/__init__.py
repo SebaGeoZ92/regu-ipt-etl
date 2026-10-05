@@ -3,4 +3,4 @@
 Importar este paquete registra los generadores (`@etl.temas.generador("nombre")`). Cada módulo produce el PMTiles de un
 tipo de fuente: `division` (vectorial, BCN), `worldclim` (clima) y, después, `soilgrids`, `glo30` y `worldcover`.
 """
-from . import division, worldclim  # noqa: F401
+from . import division, soilgrids, worldclim  # noqa: F401

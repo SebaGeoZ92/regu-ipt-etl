@@ -1321,6 +1321,74 @@ def test_temas_worldclim():
     print("  temas worldclim: OK")
 
 
+def test_temas_soilgrids():
+    """Suelo: recorte por bandas de un ráster en otra proyección (como el VRT remoto) solo dentro de la máscara, y generador."""
+    import mercantile
+    import rasterio
+    from pyproj import Transformer
+    from rasterio.transform import from_bounds
+    from etl import raster_tiles as R
+    from etl.temas_gen import soilgrids as S
+
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        # «Remoto»: UTM 18S, valor creciente hacia el este (0..999 g/kg), con un hueco nodata
+        w = h = 100
+        datos = np.tile(np.linspace(0, 999, w), (h, 1)).astype("int16")
+        datos[40:60, 40:60] = S.NODATA                       # hueco nodata dentro de la máscara (≈ lon -72,0..-71,8; lat -39,1..-39,2)
+        with rasterio.open(d / "origen.tif", "w", driver="GTiff", height=h, width=w, count=1, dtype="int16", crs="EPSG:32718",
+                           transform=from_bounds(700000, 5600000, 800000, 5700000, w, h), nodata=S.NODATA) as dst:
+            dst.write(datos, 1)
+        mascara = box(-72.4, -39.4, -71.7, -38.75)
+        out = S.recortar_ventana(d / "origen.tif", d / "raw" / "chile.tif", mascara, resolucion=0.01, banda_grados=0.2)
+        assert out.exists() and not (d / "raw" / "chile.parte").exists()
+        t0 = out.stat().st_mtime
+        assert S.recortar_ventana(d / "origen.tif", out, mascara, resolucion=0.01, banda_grados=0.2).stat().st_mtime == t0, "no se repite"
+        a_utm = Transformer.from_crs(4326, 32718, always_xy=True)
+        with rasterio.open(out) as r, rasterio.open(d / "origen.tif") as o:
+            assert r.crs.to_epsg() == 4326 and r.nodata == S.NODATA and r.dtypes[0] == "int16" and abs(r.res[0] - 0.01) < 1e-9
+            ancho_ok = 0
+            for lon, lat in ((-72.2, -38.9), (-71.9, -39.3), (-72.3, -39.2)):
+                x, y = a_utm.transform(lon, lat)
+                esperado = next(o.sample([(x, y)]))[0]
+                obtenido = next(r.sample([(lon, lat)]))[0]
+                if esperado != S.NODATA:
+                    assert abs(int(obtenido) - int(esperado)) < 25, (lon, lat, obtenido, esperado)
+                    ancho_ok += 1
+            assert ancho_ok >= 2
+            # fuera de la máscara no se escribe nada: queda nodata (aunque el origen sí tenga datos)
+            assert next(r.sample([(-72.0, -38.72)]))[0] == S.NODATA and next(r.sample([(-72.6, -39.0)]))[0] == S.NODATA, "dentro del origen pero fuera de la máscara"
+            # el hueco nodata del origen sigue siendo nodata
+            hx, hy = o.xy(50, 50)
+            lo, la = Transformer.from_crs(32718, 4326, always_xy=True).transform(hx, hy)
+            assert mascara.contains(shapely.geometry.Point(lo, la)) and next(r.sample([(lo, la)]))[0] == S.NODATA
+        # generador completo: factor 0,1 (g/kg → %), rampa 0..100, atribución en el PMTiles
+        orig = S.recortar_ventana
+        S.recortar_ventana = lambda origen, destino, mascara_, **kw: orig(d / "origen.tif", destino, mascara_, resolucion=0.01, banda_grados=0.2)
+        try:
+            gpd.GeoDataFrame({"cod_comuna": [9101], "Comuna": ["A"], "Region": ["Región de La Araucanía"]},
+                             geometry=[mascara], crs=4326).to_file(d / "c.gpkg", driver="GPKG")
+            cfg = {"paths": {"comunas": str(d / "c.gpkg")}, "comunas": {"field_cut": "cod_comuna", "field_nombre": "Comuna", "field_region": "Region"}}
+            c = {"id": "s", "nombre": "Arcilla", "zoom": [6, 9], "fuente": {"url": "https://ejemplo.cl/clay.vrt", "atribucion": "ISRIC prueba"},
+                 "generacion": {"parametros": {"variable": "clay", "profundidad": "0-5cm"}},
+                 "estilo": {"factor": 0.1, "interpolacion": "lineal", "rampa": [[0, "#000000"], [100, "#ff0000"]]}}
+            pm = S.soilgrids(c, d / "raw2", d / "s.pmtiles", cfg)
+        finally:
+            S.recortar_ventana = orig
+        assert R.encabezado(pm)["metadata"]["attribution"] == "ISRIC prueba"
+        lon, lat = -72.2, -38.9
+        x, y = a_utm.transform(lon, lat)
+        with rasterio.open(d / "origen.tif") as o:
+            v = int(next(o.sample([(x, y)]))[0])
+        t = mercantile.tile(lon, lat, 9)
+        x0, y0, x1, y1 = mercantile.xy_bounds(t)
+        mx, my = mercantile.xy(lon, lat)
+        img = R.leer_tesela(pm, 9, t.x, t.y)
+        px = img[int((y1 - my) / (y1 - y0) * 256), int((mx - x0) / (x1 - x0) * 256)]
+        assert px[3] == 255 and abs(int(px[0]) - v * 0.1 * 2.55) < 12, (px, v)
+    print("  temas soilgrids: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -1406,6 +1474,7 @@ if __name__ == "__main__":
     test_raster_tiles()
     test_temas_generadores_comunes()
     test_temas_worldclim()
+    test_temas_soilgrids()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")
