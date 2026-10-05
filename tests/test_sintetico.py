@@ -1105,6 +1105,81 @@ def test_raster_tiles():
     print("  raster tiles: OK")
 
 
+def test_temas_generadores_comunes():
+    """M3: descarga con reanudación (servidor local con Range), máscara de Chile y generador de ubicación."""
+    import http.server
+    import socketserver
+    import threading
+    import pyogrio
+    from etl import temas as T
+    from etl.temas_gen import comun, division  # noqa: F401  (registra el generador)
+
+    contenido = bytes(range(256)) * 4000                       # ≈ 1 MB
+    visitas = {"get": 0, "rangos": []}
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_HEAD(self):
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(contenido)))
+            self.end_headers()
+
+        def do_GET(self):
+            visitas["get"] += 1
+            rango = self.headers.get("Range")
+            visitas["rangos"].append(rango)
+            ini = int(rango.split("=")[1].split("-")[0]) if rango else 0
+            self.send_response(206 if rango else 200)
+            if rango:
+                self.send_header("Content-Range", f"bytes {ini}-{len(contenido) - 1}/{len(contenido)}")
+            self.send_header("Content-Length", str(len(contenido) - ini))
+            self.end_headers()
+            self.wfile.write(contenido[ini:])
+
+    with socketserver.TCPServer(("127.0.0.1", 0), H) as srv:
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{srv.server_address[1]}/dato.bin"
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            p = comun.descargar(url, d / "sub" / "dato.bin")
+            assert p.read_bytes() == contenido and visitas["get"] == 1 and visitas["rangos"] == [None]
+            assert comun.descargar(url, p) == p and visitas["get"] == 1, "completo: no se vuelve a bajar"
+            p.unlink()
+            (d / "sub" / "dato.bin.parte").write_bytes(contenido[:300000])           # una descarga a medias
+            p = comun.descargar(url, d / "sub" / "dato.bin")
+            assert p.read_bytes() == contenido and visitas["rangos"][-1] == "bytes=300000-", visitas["rangos"]
+            assert not (d / "sub" / "dato.bin.parte").exists()
+            p.write_bytes(contenido[:10])                                              # archivo truncado: se rehace
+            assert comun.descargar(url, p).read_bytes() == contenido
+        srv.shutdown()
+
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        com = gpd.GeoDataFrame({"cod_comuna": [9101, 9102, 13101, 99], "Comuna": ["A", "B", "C", "Isla"],
+                                "Region": ["Región de La Araucanía", "Región de La Araucanía", "Región Metropolitana de Santiago", "Región de Valparaíso"]},
+                               geometry=[box(-72.6, -38.8, -72.4, -38.6), box(-72.4, -38.8, -72.2, -38.6), box(-70.8, -33.6, -70.5, -33.3),
+                                         box(-109.5, -27.2, -109.3, -27.0)], crs=4326)
+        com.to_file(d / "c.gpkg", driver="GPKG")
+        cfg = {"paths": {"comunas": str(d / "c.gpkg")}, "comunas": {"field_cut": "cod_comuna", "field_nombre": "Comuna", "field_region": "Region"}}
+        m = comun.mascara_chile(cfg)
+        assert m.contains(shapely.geometry.Point(-72.5, -38.7)) and m.contains(shapely.geometry.Point(-109.4, -27.1))
+        assert m.contains(shapely.geometry.Point(-72.43, -38.7)), "el margen cubre la costa generalizada"
+        assert not m.contains(shapely.geometry.Point(-68.0, -38.7))
+        cont = comun.mascara_chile(cfg, continental=True)
+        assert not cont.contains(shapely.geometry.Point(-109.4, -27.1)) and cont.contains(shapely.geometry.Point(-70.6, -33.4)), "sin islas lejanas"
+        reg = comun.mascara_chile(cfg, region="Araucan")
+        assert reg.contains(shapely.geometry.Point(-72.5, -38.7)) and not reg.contains(shapely.geometry.Point(-70.6, -33.4))
+        # el generador de ubicación: cut a 5 dígitos, un color por región, PMTiles vectorial con la capa pedida
+        c = {"id": "u", "nombre": "Regiones y comunas", "estilo": {"capa_origen": "comunas"}, "zoom": [3, 8]}
+        out = division.division(c, d, d / "u.pmtiles", cfg)
+        assert out.read_bytes()[:7] == b"PMTiles" and "comunas" in [x[0] for x in pyogrio.list_layers(out)]
+        assert division.color_region("09") != division.color_region("13") and division.color_region("00") == division.SIN_DEMARCAR
+        assert len(set(division.COLORES)) == 16 == len(division.ORDEN)
+    print("  temas generadores comunes: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -1187,6 +1262,7 @@ if __name__ == "__main__":
     test_app_lamina()
     test_temas_catalogo()
     test_raster_tiles()
+    test_temas_generadores_comunes()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")

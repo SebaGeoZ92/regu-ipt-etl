@@ -1,7 +1,7 @@
 id: ubicacion_division
 nombre: Regiones y comunas
 categoria: ubicacion
-estado: propuesta            # pasa a mapeada cuando se genere (M3): el dato ya está en data/base
+estado: activa
 tipo: vector
 fuente:
   nombre: BCN SIIT, División comunal
@@ -13,11 +13,30 @@ fuente:
   licencia_verificada: false
   uso_comercial: por_verificar
   atribucion: Biblioteca del Congreso Nacional de Chile (BCN), SIIT
+  acceso: {verificado: true, fecha_verificacion: "2026-10-04", como: "archivo local data/base/comunas_bcn (descargar_comunas.py)"}
+generacion:
+  generador: division
 estilo:
   capa_origen: comunas
   tipo_capa: fill
-  paint: {}
-  leyenda: []
+  paint: {fill-color: ["get", "color"], fill-opacity: 0.75, fill-outline-color: "#2b332d"}
+  leyenda:
+    - {etiqueta: Arica y Parinacota, color: "#8dd3c7"}
+    - {etiqueta: Tarapacá, color: "#ffffb3"}
+    - {etiqueta: Antofagasta, color: "#bebada"}
+    - {etiqueta: Atacama, color: "#fb8072"}
+    - {etiqueta: Coquimbo, color: "#80b1d3"}
+    - {etiqueta: Valparaíso, color: "#fdb462"}
+    - {etiqueta: Metropolitana, color: "#b3de69"}
+    - {etiqueta: O'Higgins, color: "#fccde5"}
+    - {etiqueta: Maule, color: "#d9d9d9"}
+    - {etiqueta: Ñuble, color: "#bc80bd"}
+    - {etiqueta: Biobío, color: "#ccebc5"}
+    - {etiqueta: La Araucanía, color: "#ffed6f"}
+    - {etiqueta: Los Ríos, color: "#a6cee3"}
+    - {etiqueta: Los Lagos, color: "#fdbf6f"}
+    - {etiqueta: Aysén, color: "#cab2d6"}
+    - {etiqueta: Magallanes y Antártica Chilena, color: "#b2df8a"}
 zoom: [3, 12]
 nota: >
   Mapa de ubicación: regiones coloreadas y límites comunales. La línea de costa de la BCN está generalizada (ver CLAUDE.md,
