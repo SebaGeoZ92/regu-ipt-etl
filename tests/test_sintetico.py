@@ -936,10 +936,11 @@ def test_temas_catalogo():
     from etl import temas as T
     real = T.cargar_catalogo()
     assert {"ubicacion_division", "clima_temperatura_media_anual", "suelo_arcilla_superficial", "relieve_altitud"} <= set(real)
-    assert all(c["estado"] == "propuesta" for c in real.values()), "ninguno se activa sin Paso 0"
+    assert all(c["estado"] == "propuesta" or c["fuente"]["acceso"]["verificado"] for c in real.values()), "ninguno sale de propuesta sin Paso 0"
     assert not T.publicable(real["clima_temperatura_media_anual"]) and T.publicable(real["suelo_arcilla_superficial"])
 
     base = copy.deepcopy(real["clima_temperatura_media_anual"])
+    base["estado"] = "propuesta"          # la base de las pruebas no depende de lo que esté activo en el catálogo real
 
     def con(**cambios):
         c = copy.deepcopy(base)
