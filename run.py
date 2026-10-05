@@ -462,6 +462,37 @@ def cmd_app(cfg, args):
     uvicorn.run(crear_app(a), host="127.0.0.1", port=args.puerto, log_level="warning")
 
 
+def cmd_temas(cfg, args):
+    """Mapas temáticos de referencia (docs/MAPAS_TEMATICOS.md): estado | validar | generar --tema ID."""
+    from etl import temas as T
+    accion = args.archivo or "estado"
+    if accion == "validar":
+        try:
+            cat = T.cargar_catalogo()
+        except ValueError as ex:
+            sys.exit(str(ex))
+        print(f"{len(cat)} contratos válidos en {T.DIR_TEMAS.name}/")
+        return
+    cat = T.cargar_catalogo()
+    if accion == "estado":
+        t = T.estado(cat, ruta(cfg, "out"))
+        with pd.option_context("display.width", 200, "display.max_columns", 20):
+            print(t.to_string(index=False))
+        print(f"\n{len(t)} temas · {int(t.generado.sum())} generados · {int(t.publicable.sum())} publicables (licencia verificada y uso comercial)")
+        return
+    if accion == "generar":
+        if not args.tema:
+            sys.exit("Uso: python run.py temas generar --tema <id>")
+        import etl.temas_gen  # noqa: F401  (registra los generadores)
+        try:
+            p = T.generar(args.tema, cat, ruta(cfg, "raw"), ruta(cfg, "out"), cfg)
+        except (KeyError, ValueError) as ex:
+            sys.exit(str(ex))
+        log.info("%s: %s (%.1f MB)", args.tema, p, Path(p).stat().st_size / 1e6)
+        return
+    sys.exit("Uso: python run.py temas [estado|validar|generar --tema <id>]")
+
+
 def cmd_teselas(cfg, args):
     """Teselas PMTiles locales de Regu Suelo en <paths.out>/tiles/: normativa | ocupacion | comunas (por defecto, las tres)."""
     import time
@@ -659,7 +690,7 @@ def cmd_importar_revision(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
-                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints", "ocupacion", "teselas", "app"])
+                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints", "ocupacion", "teselas", "app", "temas"])
     ap.add_argument("--release", help="footprints: release de Overture (por defecto, el último)")
     ap.add_argument("--conservar-crudo", action="store_true", help="footprints: no borrar el parquet crudo de Overture")
     ap.add_argument("--cut", help="muestra: CUT(s) centrales separados por coma, p.ej. 09101")
@@ -673,6 +704,7 @@ def main():
     ap.add_argument("--wkt", help="ficha: geometría WKT en EPSG:4326 (punto o polígono)")
     ap.add_argument("--gpkg", help="ficha: GPKG de build (por defecto el más reciente, preferente nacional)")
     ap.add_argument("archivo", nargs="?", help="importar-revision: CSV con 'decision' llena · fuentes: estado|validar")
+    ap.add_argument("--tema", help="temas generar: id del tema (temas/<id>.yaml)")
     ap.add_argument("--puerto", type=int, default=8000, help="app: puerto local (por defecto 8000)")
     ap.add_argument("--no-abrir", action="store_true", help="app: no abrir el navegador")
     ap.add_argument("--region", help="regex sobre el nombre de región (ej. ARAUCANIA)")
@@ -718,6 +750,8 @@ def main():
         cmd_teselas(cfg, args)
     if args.cmd == "app":
         cmd_app(cfg, args)
+    if args.cmd == "temas":
+        cmd_temas(cfg, args)
 
 
 if __name__ == "__main__":

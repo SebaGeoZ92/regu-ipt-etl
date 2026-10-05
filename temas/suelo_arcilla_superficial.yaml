@@ -1,0 +1,35 @@
+id: suelo_arcilla_superficial
+nombre: Arcilla en el suelo superficial (0-5 cm)
+categoria: suelo
+estado: propuesta
+tipo: raster
+fuente:
+  nombre: SoilGrids 2.0, arcilla 0-5 cm (media)
+  url: https://files.isric.org/soilgrids/latest/data/clay/clay_0-5cm_mean.vrt
+  version: "2.0"
+  fecha_dato: "2020"
+  resolucion: "250 m"
+  licencia: CC BY 4.0
+  licencia_verificada: true
+  uso_comercial: si
+  atribucion: "ISRIC, World Soil Information. SoilGrids 2.0 (Poggio et al., 2021, SOIL 7: 217-240), CC BY 4.0"
+  acceso: {verificado: true, fecha_verificacion: "2026-10-04", como: "VRT remoto (6 MB) sobre teselas COG; lectura por ventanas con GDAL", tamano_mb: 6}
+generacion:
+  generador: soilgrids
+  parametros: {variable: clay, profundidad: 0-5cm}
+estilo:
+  unidad: "%"
+  factor: 0.1
+  interpolacion: lineal
+  rampa:
+    - [0, "#fff5e0"]
+    - [10, "#f7d9a8"]
+    - [20, "#e4b07a"]
+    - [30, "#c98a5a"]
+    - [40, "#a56445"]
+    - [55, "#6f3b2c"]
+    - [80, "#3d1e17"]
+zoom: [4, 10]
+nota: >
+  Producto modelado y global (SoilGrids), no un levantamiento de suelos: la incertidumbre local es alta. Es contexto
+  hasta que se pueda usar la capacidad de uso de CIREN (M7).

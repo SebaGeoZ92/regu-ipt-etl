@@ -929,6 +929,104 @@ def test_app_lamina():
     print("  app lamina: OK")
 
 
+def test_temas_catalogo():
+    """M1 de mapas temáticos: el catálogo real es válido y los contratos mal formados se rechazan con su motivo."""
+    import copy
+    import yaml
+    from etl import temas as T
+    real = T.cargar_catalogo()
+    assert {"ubicacion_division", "clima_temperatura_media_anual", "suelo_arcilla_superficial", "relieve_altitud"} <= set(real)
+    assert all(c["estado"] == "propuesta" for c in real.values()), "ninguno se activa sin Paso 0"
+    assert not T.publicable(real["clima_temperatura_media_anual"]) and T.publicable(real["suelo_arcilla_superficial"])
+
+    base = copy.deepcopy(real["clima_temperatura_media_anual"])
+
+    def con(**cambios):
+        c = copy.deepcopy(base)
+        for k, v in cambios.items():
+            partes = k.split("__")
+            d = c
+            for p in partes[:-1]:
+                d = d[p]
+            if v == "__borrar__":
+                d.pop(partes[-1], None)
+            else:
+                d[partes[-1]] = v
+        return c
+
+    def errores(c, archivo=None):
+        return " | ".join(T.validar(c, archivo))
+
+    assert T.validar(base, Path("clima_temperatura_media_anual.yaml")) == []
+    assert "no coincide con el nombre del archivo" in errores(base, Path("otro.yaml"))
+    assert "categoria" in errores(con(categoria="astronomia"))
+    assert "additional properties" in errores(con(inventado=1)).lower() or "inventado" in errores(con(inventado=1))
+    assert "estilo.rampa" in errores(con(estilo__rampa="__borrar__"))
+    assert "crecientes" in errores(con(estilo__rampa=[[10, "#000000"], [0, "#ffffff"]]))
+    assert "#rrggbb" in errores(con(estilo__rampa=[[0, "rojo"], [1, "#ffffff"]]))
+    assert "mínimo supera" in errores(con(zoom=[9, 3]))
+    assert "licencia_verificada: true exige" in errores(con(fuente__licencia_verificada=True, fuente__uso_comercial="por_verificar"))
+    # reglas por estado: mapeada/activa exigen url, fecha, acceso verificado y generador
+    m = con(estado="mapeada", fuente__acceso={"verificado": False}, generacion="__borrar__")
+    e = errores(m)
+    assert "acceso.verificado" in e and "generacion.generador" in e, e
+    assert "url y fecha_dato" in errores(con(estado="activa", fuente__url="__borrar__", fuente__fecha_dato="__borrar__"))
+    assert errores(con(estado="activa")) == "", "con todo lo exigido, activa es válida"
+    vect = con(tipo="vector", estado="activa", estilo={"capa_origen": "x"})
+    assert "capa_origen, estilo.tipo_capa y estilo.paint" in errores(vect)
+
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        (d / "temas").mkdir()
+        for id_, c in (("a_tema", con(id="a_tema")), ("b_tema", con(id="b_tema", estado="activa"))):
+            (d / "temas" / f"{id_}.yaml").write_text(yaml.safe_dump(c, allow_unicode=True), encoding="utf-8")
+        cat = T.cargar_catalogo(d / "temas")
+        assert list(cat) == ["a_tema", "b_tema"]
+        (d / "temas" / "malo.yaml").write_text(yaml.safe_dump(con(id="malo", zoom=[9, 3])), encoding="utf-8")
+        try:
+            T.cargar_catalogo(d / "temas")
+            raise AssertionError("debía rechazar el contrato inválido")
+        except ValueError as ex:
+            assert "malo.yaml" in str(ex) and "mínimo supera" in str(ex)
+        (d / "temas" / "malo.yaml").unlink()
+        # estado, vista pública y generación
+        out, raw = d / "out", d / "raw"
+        assert not T.estado(cat, out).generado.any()
+        try:
+            T.generar("a_tema", cat, raw, out, {})
+            raise AssertionError("una propuesta no se genera")
+        except ValueError as ex:
+            assert "Paso 0" in str(ex)
+        try:
+            T.generar("b_tema", cat, raw, out, {})
+            raise AssertionError("sin generador registrado no se genera")
+        except ValueError as ex:
+            assert "worldclim_bio" in str(ex) and "no está registrado" in str(ex)
+        llamadas = []
+
+        @T.generador("worldclim_bio")
+        def _falso(c, dir_raw, destino, cfg):
+            llamadas.append((c["id"], dir_raw, destino))
+            destino.write_bytes(b"PMTiles-falso")
+            return destino
+        try:
+            p = T.generar("b_tema", cat, raw, out, {})
+        finally:
+            T.GENERADORES.pop("worldclim_bio", None)
+        assert p == out / "tiles" / "temas" / "b_tema.pmtiles" and llamadas[0][1] == raw / "temas" / "b_tema"
+        est = T.estado(cat, out).set_index("id")
+        assert bool(est.loc["b_tema", "generado"]) and not bool(est.loc["a_tema", "generado"]) and est.loc["b_tema", "mb"] is not None
+        pub = T.publico(cat["b_tema"], out)
+        assert pub["disponible"] and not pub["publicable"] and pub["fuente"]["atribucion"] and "generacion" not in pub
+        assert str(d) not in json.dumps(pub), "la vista pública no revela rutas del disco"
+        try:
+            T.generar("no_existe", cat, raw, out, {})
+            raise AssertionError("tema desconocido")
+        except KeyError:
+            pass
+    print("  temas catálogo: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -1009,6 +1107,7 @@ if __name__ == "__main__":
     test_app_teselas()
     test_app_basemap()
     test_app_lamina()
+    test_temas_catalogo()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")

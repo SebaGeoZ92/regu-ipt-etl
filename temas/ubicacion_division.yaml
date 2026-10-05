@@ -1,0 +1,24 @@
+id: ubicacion_division
+nombre: Regiones y comunas
+categoria: ubicacion
+estado: propuesta            # pasa a mapeada cuando se genere (M3): el dato ya está en data/base
+tipo: vector
+fuente:
+  nombre: BCN SIIT, División comunal
+  url: https://www.bcn.cl/obtienearchivo?id=repositorio/10221/10396/5/comunas_final.zip
+  version: "2014-2018 (346 comunas)"
+  fecha_dato: "2018"
+  resolucion: "línea de costa generalizada"
+  licencia: por verificar (BCN)
+  licencia_verificada: false
+  uso_comercial: por_verificar
+  atribucion: Biblioteca del Congreso Nacional de Chile (BCN), SIIT
+estilo:
+  capa_origen: comunas
+  tipo_capa: fill
+  paint: {}
+  leyenda: []
+zoom: [3, 12]
+nota: >
+  Mapa de ubicación: regiones coloreadas y límites comunales. La línea de costa de la BCN está generalizada (ver CLAUDE.md,
+  pérdida costera): sirve para ubicarse, no para medir. Se cambia por la DPA 2023 de SUBDERE si se adopta.

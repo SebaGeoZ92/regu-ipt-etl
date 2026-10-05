@@ -1,0 +1,36 @@
+id: clima_precipitacion_anual
+nombre: Precipitación anual
+categoria: clima
+estado: propuesta
+tipo: raster
+fuente:
+  nombre: WorldClim 2.1 (BIO12, promedio 1970-2000)
+  url: https://geodata.ucdavis.edu/climate/worldclim/2_1/base/wc2.1_2.5m_bio.zip
+  version: "2.1, 2,5 minutos de arco"
+  fecha_dato: "1970-2000"
+  resolucion: "≈ 4,5 km (2,5 minutos)"
+  licencia: por verificar (WorldClim 2.1)
+  licencia_verificada: false
+  uso_comercial: por_verificar
+  atribucion: "Fick, S.E. y Hijmans, R.J. (2017). WorldClim 2.1. Int. J. Climatol. 37: 4302-4315"
+  acceso: {verificado: true, fecha_verificacion: "2026-10-04", como: "HEAD 200 al zip (658 MB)", tamano_mb: 658}
+generacion:
+  generador: worldclim_bio
+  parametros: {archivo: wc2.1_2.5m_bio_12.tif}
+estilo:
+  unidad: "mm/año"
+  interpolacion: lineal
+  rampa:
+    - [0, "#fff7e3"]
+    - [50, "#f6e8c3"]
+    - [150, "#dfe9b5"]
+    - [300, "#b8e0b4"]
+    - [600, "#7fcdbb"]
+    - [1000, "#41b6c4"]
+    - [1500, "#2c7fb8"]
+    - [2500, "#253494"]
+    - [4500, "#081d58"]
+zoom: [3, 8]
+nota: >
+  Producto modelado y global, resolución de ≈ 4,5 km. En zonas de montaña y de lluvia fuerte (Patagonia, sur de Chile) el
+  modelo subestima: úsese como contexto, no como dato de proyecto.

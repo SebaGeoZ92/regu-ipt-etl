@@ -1,0 +1,34 @@
+id: suelo_carbono_organico
+nombre: Carbono orgánico del suelo superficial (0-5 cm)
+categoria: suelo
+estado: propuesta
+tipo: raster
+fuente:
+  nombre: SoilGrids 2.0, carbono orgánico 0-5 cm (media)
+  url: https://files.isric.org/soilgrids/latest/data/soc/soc_0-5cm_mean.vrt
+  version: "2.0"
+  fecha_dato: "2020"
+  resolucion: "250 m"
+  licencia: CC BY 4.0
+  licencia_verificada: true
+  uso_comercial: si
+  atribucion: "ISRIC, World Soil Information. SoilGrids 2.0 (Poggio et al., 2021, SOIL 7: 217-240), CC BY 4.0"
+generacion:
+  generador: soilgrids
+  parametros: {variable: soc, profundidad: 0-5cm}
+estilo:
+  unidad: "g/kg"
+  factor: 0.1
+  interpolacion: lineal
+  rampa:
+    - [0, "#fffbe6"]
+    - [10, "#e9e3a8"]
+    - [25, "#bcd48a"]
+    - [50, "#7cb46b"]
+    - [100, "#3f8f55"]
+    - [200, "#1f5f3f"]
+    - [400, "#0b2f20"]
+zoom: [4, 10]
+nota: >
+  Producto modelado y global; en suelos de turba y de bosque húmedo del sur los valores son muy altos y variables.
+  Contexto, no dato de proyecto.

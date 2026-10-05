@@ -1,0 +1,37 @@
+id: clima_temperatura_media_anual
+nombre: Temperatura media anual
+categoria: clima
+estado: propuesta
+tipo: raster
+fuente:
+  nombre: WorldClim 2.1 (BIO1, promedio 1970-2000)
+  url: https://geodata.ucdavis.edu/climate/worldclim/2_1/base/wc2.1_2.5m_bio.zip
+  version: "2.1, 2,5 minutos de arco"
+  fecha_dato: "1970-2000"
+  resolucion: "≈ 4,5 km (2,5 minutos)"
+  licencia: por verificar (WorldClim 2.1)
+  licencia_verificada: false
+  uso_comercial: por_verificar
+  atribucion: "Fick, S.E. y Hijmans, R.J. (2017). WorldClim 2.1. Int. J. Climatol. 37: 4302-4315"
+  acceso: {verificado: true, fecha_verificacion: "2026-10-04", como: "HEAD 200 al zip (658 MB)", tamano_mb: 658}
+generacion:
+  generador: worldclim_bio
+  parametros: {archivo: wc2.1_2.5m_bio_1.tif}
+estilo:
+  unidad: "°C"
+  interpolacion: lineal
+  rampa:
+    - [-10, "#313695"]
+    - [-5, "#4575b4"]
+    - [0, "#74add1"]
+    - [5, "#abd9e9"]
+    - [8, "#e0f3f8"]
+    - [11, "#fee090"]
+    - [14, "#fdae61"]
+    - [17, "#f46d43"]
+    - [20, "#d73027"]
+    - [26, "#a50026"]
+zoom: [3, 8]
+nota: >
+  Producto modelado y global, resolución de ≈ 4,5 km: sirve para el contexto climático regional, no para un predio.
+  Normales 1970-2000, no el clima actual.

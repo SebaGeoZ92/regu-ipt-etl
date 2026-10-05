@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Contrato de un tema (docs/MAPAS_TEMATICOS.md)",
+  "type": "object",
+  "required": ["id", "nombre", "categoria", "estado", "tipo", "fuente", "estilo", "zoom"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{2,60}$"},
+    "nombre": {"type": "string", "minLength": 3},
+    "categoria": {"enum": ["ubicacion", "relieve", "suelo", "clima", "cobertura", "agua", "riesgo", "infraestructura", "socioeconomico"]},
+    "estado": {"enum": ["propuesta", "mapeada", "activa"]},
+    "tipo": {"enum": ["raster", "vector"]},
+    "fuente": {
+      "type": "object",
+      "required": ["nombre", "licencia", "licencia_verificada", "atribucion"],
+      "additionalProperties": false,
+      "properties": {
+        "nombre": {"type": "string", "minLength": 3},
+        "url": {"type": "string", "pattern": "^https?://"},
+        "version": {"type": "string"},
+        "fecha_dato": {"type": "string"},
+        "resolucion": {"type": "string"},
+        "licencia": {"type": "string", "minLength": 2},
+        "licencia_verificada": {"type": "boolean"},
+        "uso_comercial": {"enum": ["si", "no", "por_verificar"]},
+        "atribucion": {"type": "string", "minLength": 3},
+        "acceso": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "verificado": {"type": "boolean"},
+            "fecha_verificacion": {"type": "string"},
+            "como": {"type": "string"},
+            "tamano_mb": {"type": "number", "minimum": 0}
+          }
+        }
+      }
+    },
+    "generacion": {
+      "type": "object",
+      "required": ["generador"],
+      "additionalProperties": false,
+      "properties": {
+        "generador": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "parametros": {"type": "object"}
+      }
+    },
+    "estilo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unidad": {"type": "string"},
+        "factor": {"type": "number"},
+        "interpolacion": {"enum": ["lineal", "escalon"]},
+        "rampa": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"type": "array", "minItems": 2, "maxItems": 2}
+        },
+        "leyenda": {
+          "type": "array",
+          "items": {"type": "object", "required": ["etiqueta", "color"], "properties": {"etiqueta": {"type": "string"}, "color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"}}}
+        },
+        "capa_origen": {"type": "string"},
+        "paint": {"type": "object"},
+        "tipo_capa": {"enum": ["fill", "line", "circle"]}
+      }
+    },
+    "zoom": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "integer", "minimum": 0, "maximum": 22}},
+    "nota": {"type": "string"}
+  }
+}
