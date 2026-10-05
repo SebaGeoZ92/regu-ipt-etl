@@ -1,7 +1,7 @@
 id: relieve_altitud
 nombre: Altitud y sombreado del relieve
 categoria: relieve
-estado: propuesta
+estado: activa
 tipo: raster
 fuente:
   nombre: Copernicus DEM GLO-30
@@ -16,7 +16,7 @@ fuente:
   acceso: {verificado: true, fecha_verificacion: "2026-10-04", como: "teselas COG públicas en S3 (≈ 46 MB cada una)", tamano_mb: 46}
 generacion:
   generador: glo30
-  parametros: {ventana_piloto: "La Araucanía"}
+  parametros: {region: Araucan, azimut: 315, altura_sol: 45, exageracion: 1.5, intensidad: 0.55}
 estilo:
   unidad: "m"
   interpolacion: lineal

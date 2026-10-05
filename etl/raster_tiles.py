@@ -97,8 +97,11 @@ def _mbtiles(path: Path, meta: dict) -> sqlite3.Connection:
 
 def teselar_raster(tif: Path, destino: Path, rampa: list, *, interpolacion: str = "lineal", factor: float = 1.0,
                    nodata: float | None = None, zoom: tuple[int, int] = (3, 9), mascara=None, nombre: str = "",
-                   atribucion: str = "", tam: int = 256) -> dict:
-    """GeoTIFF → PMTiles ráster coloreado. Devuelve {destino, tiles, mb, zoom}."""
+                   atribucion: str = "", tam: int = 256, sombreado: Path | None = None, intensidad: float = 0.5) -> dict:
+    """GeoTIFF → PMTiles ráster coloreado. Devuelve {destino, tiles, mb, zoom}.
+
+    `sombreado`: segundo GeoTIFF (float, 0 = sombra, 1 = luz; el mismo territorio) que oscurece el color por relieve:
+    color × ((1 − intensidad) + intensidad × sombreado). Donde no hay sombreado, el color queda sin modificar."""
     destino = Path(destino)
     destino.parent.mkdir(parents=True, exist_ok=True)
     remuestreo = Resampling.nearest if interpolacion == "escalon" else Resampling.bilinear
@@ -108,6 +111,7 @@ def teselar_raster(tif: Path, destino: Path, rampa: list, *, interpolacion: str 
         shapely.prepare(mask3857)
     mb = destino.with_suffix(".mbtiles.tmp")
     n = 0
+    sombra = rasterio.open(sombreado) if sombreado else None
     with rasterio.open(tif) as src:
         nd = nodata if nodata is not None else src.nodata
         b = src.bounds if src.crs and src.crs.to_epsg() == 4326 else rasterio.warp.transform_bounds(src.crs, "EPSG:4326", *src.bounds)
@@ -138,12 +142,21 @@ def teselar_raster(tif: Path, destino: Path, rampa: list, *, interpolacion: str 
                     if not valido.any():
                         continue
                     img = colorear(np.nan_to_num(destino_px).astype("float64") * factor, valido, rampa, interpolacion)
+                    if sombra is not None:
+                        luz = np.full((tam, tam), np.nan, dtype="float32")
+                        reproject(source=rasterio.band(sombra, 1), destination=luz, dst_transform=from_bounds(x0, y0, x1, y1, tam, tam),
+                                  dst_crs="EPSG:3857", src_nodata=sombra.nodata, dst_nodata=np.nan, resampling=Resampling.bilinear,
+                                  init_dest_nodata=True)
+                        k = np.where(np.isfinite(luz), (1 - intensidad) + intensidad * np.clip(luz, 0, 1), 1.0)
+                        img[..., :3] = np.clip(np.rint(img[..., :3] * k[..., None]), 0, 255).astype("uint8")
                     con.execute("INSERT INTO tiles VALUES (?, ?, ?, ?)", (z, t.x, (1 << z) - 1 - t.y, _png(img)))
                     n += 1
                 con.commit()
                 log.info("zoom %d: %d teselas hasta ahora", z, n)
         finally:
             con.close()
+            if sombra is not None:
+                sombra.close()
     if n == 0:
         mb.unlink(missing_ok=True)
         raise ValueError("Ninguna tesela con datos: ¿la máscara y el ráster se solapan?")

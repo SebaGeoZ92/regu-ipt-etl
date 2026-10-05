@@ -1182,12 +1182,17 @@ def test_temas_generadores_comunes():
             pass
 
         def do_HEAD(self):
-            self.send_response(200)
+            self.send_response(200 if self.path == "/dato.bin" else 404)
             self.send_header("Content-Length", str(len(contenido)))
             self.end_headers()
 
         def do_GET(self):
             visitas["get"] += 1
+            if self.path != "/dato.bin":
+                self.send_response(404)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             rango = self.headers.get("Range")
             visitas["rangos"].append(rango)
             ini = int(rango.split("=")[1].split("-")[0]) if rango else 0
@@ -1213,6 +1218,13 @@ def test_temas_generadores_comunes():
             assert not (d / "sub" / "dato.bin.parte").exists()
             p.write_bytes(contenido[:10])                                              # archivo truncado: se rehace
             assert comun.descargar(url, p).read_bytes() == contenido
+            g0 = visitas["get"]
+            try:
+                comun.descargar(url.replace("dato.bin", "no_existe.bin"), d / "x.bin")
+                raise AssertionError("un 404 debe fallar")
+            except FileNotFoundError as ex:
+                assert "404" in str(ex)
+            assert visitas["get"] == g0 and not (d / "x.bin").exists(), "un 404 no se reintenta ni deja archivos"
         srv.shutdown()
 
     with tempfile.TemporaryDirectory() as d:
@@ -1389,6 +1401,198 @@ def test_temas_soilgrids():
     print("  temas soilgrids: OK")
 
 
+def test_temas_relieve():
+    """Relieve: nombres de teselas GLO-30, sombreado de Horn (valores a mano), por bloques, parámetro del teselador y generador."""
+    import http.server
+    import math
+    import mercantile
+    import rasterio
+    import socketserver
+    import threading
+    from rasterio.transform import from_bounds
+    from etl import raster_tiles as R
+    from etl.temas_gen import relieve as V
+
+    # 1) nombres de teselas: la esquina suroeste da el nombre
+    n = V.nombres_teselas(-73.5, -39.7, -70.8, -37.5)
+    assert len(n) == 12 and "Copernicus_DSM_COG_10_S39_00_W073_00_DEM" in n and "Copernicus_DSM_COG_10_S40_00_W074_00_DEM" in n
+    assert "Copernicus_DSM_COG_10_S38_00_W071_00_DEM" in n and not any("W070" in x for x in n)
+    assert V.nombres_teselas(10.2, 45.1, 11.5, 46.0) == ["Copernicus_DSM_COG_10_N45_00_E010_00_DEM", "Copernicus_DSM_COG_10_N45_00_E011_00_DEM"]
+
+    # 2) sombreado: plano horizontal = sin(altura); plano que sube al este (30°) con sol del oeste (270°) o del este (90°)
+    dx = np.full(20, 30.0)
+    plano = np.zeros((20, 20))
+    assert np.allclose(V.sombreado(plano, dx, 30.0, altura=45.0), math.sin(math.radians(45)), atol=1e-6)
+    rampa_e = np.tile(np.arange(20) * 30.0 * math.tan(math.radians(30)), (20, 1))
+    oeste = V.sombreado(rampa_e, dx, 30.0, azimut=270.0, altura=45.0)[10, 10]
+    este = V.sombreado(rampa_e, dx, 30.0, azimut=90.0, altura=45.0)[10, 10]
+    assert abs(oeste - 0.7071 * (math.cos(math.radians(30)) + math.sin(math.radians(30)))) < 1e-3 and abs(oeste - 0.966) < 2e-3, oeste
+    assert abs(este - 0.7071 * (math.cos(math.radians(30)) - math.sin(math.radians(30)))) < 1e-3 and abs(este - 0.259) < 2e-3, este
+    sube_norte = np.tile((np.arange(20) * 30.0 * math.tan(math.radians(30)))[::-1, None], (1, 20))     # fila 0 = norte = más alto
+    assert V.sombreado(sube_norte, dx, 30.0, azimut=180.0, altura=45.0)[10, 10] > 0.95, "ladera que mira al sur con sol del sur"
+    con_hueco = rampa_e.copy()
+    con_hueco[5, 5] = np.nan
+    s2 = V.sombreado(con_hueco, dx, 30.0)
+    assert np.isnan(s2[5, 5]) and np.isfinite(s2[10, 10]) and s2.dtype == np.float32 and 0 <= np.nanmin(s2) and np.nanmax(s2) <= 1
+
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        # 3) por bloques = de una vez (el traslape de una fila evita costuras)
+        z = (np.add.outer(np.arange(60) * 3.0, np.sin(np.arange(60) / 4.0) * 40)).astype("int16")
+        with rasterio.open(d / "dem.tif", "w", driver="GTiff", height=60, width=60, count=1, dtype="int16", crs="EPSG:4326",
+                           transform=from_bounds(-72.5, -38.6, -72.38, -38.48, 60, 60), nodata=V.NODATA) as dst:
+            dst.write(z, 1)
+        uno = V.generar_sombreado(d / "dem.tif", d / "s1.tif", bloque=1000)
+        varios = V.generar_sombreado(d / "dem.tif", d / "s2.tif", bloque=16)
+        with rasterio.open(uno) as a, rasterio.open(varios) as b:
+            assert np.allclose(a.read(1), b.read(1), atol=1e-6) and a.nodata == -1.0
+        assert V.generar_sombreado(d / "dem.tif", uno).stat().st_mtime == uno.stat().st_mtime, "no se repite"
+
+        # 4) teselador con sombreado: elevación constante (rojo medio) con sombra 0 al oeste y luz 1 al este (intensidad 0,5)
+        for nombre, datos in (("e.tif", np.full((40, 40), 50.0, dtype="float32")), ("l.tif", np.tile(np.array([0.0] * 20 + [1.0] * 20, dtype="float32"), (40, 1)))):
+            with rasterio.open(d / nombre, "w", driver="GTiff", height=40, width=40, count=1, dtype="float32", crs="EPSG:4326",
+                               transform=from_bounds(-73, -39, -72, -38, 40, 40), nodata=-1.0 if nombre == "l.tif" else None) as dst:
+                dst.write(datos, 1)
+        rampa = [[0, "#000000"], [100, "#ff0000"]]
+        r = R.teselar_raster(d / "e.tif", d / "e.pmtiles", rampa, zoom=(7, 7), sombreado=d / "l.tif", intensidad=0.5)
+        r0 = R.teselar_raster(d / "e.tif", d / "e0.pmtiles", rampa, zoom=(7, 7))
+
+        def rojo(pm, lon):
+            t = mercantile.tile(lon, -38.5, 7)
+            x0, y0, x1, y1 = mercantile.xy_bounds(t)
+            mx, my = mercantile.xy(lon, -38.5)
+            return int(R.leer_tesela(pm, 7, t.x, t.y)[int((y1 - my) / (y1 - y0) * 256), int((mx - x0) / (x1 - x0) * 256)][0])
+        assert abs(rojo(r0["destino"], -72.75) - 127) < 3 and abs(rojo(r["destino"], -72.75) - 64) < 4, "sombra 0 × intensidad 0,5 → mitad"
+        assert abs(rojo(r["destino"], -72.25) - 127) < 3, "luz 1 → sin oscurecer"
+
+        # 5) generador completo con un servidor de teselas falso: faltan las filas S40 y S38 (404 → se omiten)
+        def tile_bytes(lon0):
+            with rasterio.io.MemoryFile() as mf:
+                with mf.open(driver="GTiff", height=100, width=100, count=1, dtype="int16", crs="EPSG:4326", transform=from_bounds(lon0, -39, lon0 + 1, -38, 100, 100), nodata=V.NODATA) as dst:
+                    dst.write((np.tile(np.arange(100) * 10, (100, 1)) + 500).astype("int16"), 1)      # sube hacia el este: 500..1490 m
+                return mf.read()
+        sirve = {"Copernicus_DSM_COG_10_S39_00_W073_00_DEM": tile_bytes(-73), "Copernicus_DSM_COG_10_S39_00_W072_00_DEM": tile_bytes(-72)}
+        pedidos = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _nombre(self):
+                return self.path.strip("/").split("/")[0]
+
+            def do_HEAD(self):
+                c = sirve.get(self._nombre())
+                self.send_response(200 if c else 404)
+                if c:
+                    self.send_header("Content-Length", str(len(c)))
+                self.end_headers()
+
+            def do_GET(self):
+                pedidos.append(self.path)
+                c = sirve.get(self._nombre())
+                self.send_response(200 if c else 404)
+                self.send_header("Content-Length", str(len(c) if c else 0))
+                self.end_headers()
+                if c:
+                    self.wfile.write(c)
+
+        with socketserver.TCPServer(("127.0.0.1", 0), H) as srv:
+            threading.Thread(target=srv.serve_forever, daemon=True).start()
+            base0, res0 = V.BASE, V.RES
+            V.BASE, V.RES = f"http://127.0.0.1:{srv.server_address[1]}", 0.01
+            try:
+                gpd.GeoDataFrame({"cod_comuna": [9101], "Comuna": ["A"], "Region": ["Región de La Araucanía"]},
+                                 geometry=[box(-72.9, -39.3, -71.1, -37.7)], crs=4326).to_file(d / "c.gpkg", driver="GPKG")
+                cfg = {"paths": {"comunas": str(d / "c.gpkg"), "raw": str(d / "raw")}, "comunas": {"field_cut": "cod_comuna", "field_nombre": "Comuna", "field_region": "Region"}}
+                c = {"id": "rel", "nombre": "Relieve", "zoom": [8, 9], "fuente": {"atribucion": "Copernicus de prueba"},
+                     "generacion": {"parametros": {"region": "Araucan", "azimut": 315, "altura_sol": 45, "exageracion": 20.0, "intensidad": 0.6}},
+                     "estilo": {"interpolacion": "lineal", "rampa": [[0, "#000000"], [2000, "#ff0000"]]}}
+                pm = V.glo30(c, d / "rawtema", d / "rel.pmtiles", cfg)
+            finally:
+                V.BASE, V.RES = base0, res0
+            srv.shutdown()
+        assert R.encabezado(pm)["metadata"]["attribution"] == "Copernicus de prueba"
+        assert (d / "rawtema" / "dem.tif").exists() and (d / "rawtema" / "sombreado.tif").exists()
+        assert (d / "raw" / "temas" / "_compartido" / "glo30" / "Copernicus_DSM_COG_10_S39_00_W073_00_DEM.tif").exists()
+        assert not list((d / "raw" / "temas" / "_compartido" / "glo30").glob("*S40*")), "las teselas que no existen se omiten"
+        t = mercantile.tile(-72.0, -38.5, 9)
+        img = R.leer_tesela(pm, 9, t.x, t.y)
+        assert img is not None and img[100, 100][3] == 255
+        # la ladera sube al este (mira al oeste) y el sol viene del noroeste: más luz que un plano → el color queda cerca del de la rampa
+        assert int(img[100, 100][0]) > 0
+    print("  temas relieve: OK")
+
+
+def test_temas_worldcover():
+    """Cobertura: nombres y selección de teselas de 3°, mosaico reducido con `mode` (sin clases inventadas) y generador."""
+    import mercantile
+    import rasterio
+    from rasterio.transform import from_bounds
+    from etl import raster_tiles as R
+    from etl.temas_gen import worldcover as W
+
+    assert W.tesela_url(-39, -72).endswith("ESA_WorldCover_10m_2021_v200_S39W072_Map.tif") and W.tesela_url(3, 6).endswith("N03E006_Map.tif")
+    assert set(W.teselas_necesarias(box(-73.5, -39.7, -70.8, -37.5))) == {(-42, -75), (-42, -72), (-39, -75), (-39, -72)}
+    assert W.teselas_necesarias(box(-74.9, -38.9, -73.0, -37.0)) == [(-39, -75)], "solo las que tocan la máscara"
+    assert set(W.teselas_necesarias(box(-72.1, -39.1, -71.9, -38.9))) == {(-42, -75), (-42, -72), (-39, -75), (-39, -72)}, "cruza la esquina común de cuatro teselas"
+    assert W.teselas_necesarias(box(-71.9, -38.9, -71.5, -38.5)) == [(-39, -72)], "dentro de una sola tesela"
+
+    def tesela(ruta, lat0, lon0, patron):
+        """Tesela de 3° con 60×60 px (0,05°): cada bloque de 2×2 lleva una clase mayoritaria (3 de 4) y una distinta."""
+        a = np.zeros((60, 60), dtype="uint8")
+        for i in range(0, 60, 2):
+            for j in range(0, 60, 2):
+                mayor, menor = patron(i // 2, j // 2)
+                a[i:i + 2, j:j + 2] = mayor
+                a[i + 1, j + 1] = menor
+        with rasterio.open(ruta, "w", driver="GTiff", height=60, width=60, count=1, dtype="uint8", crs="EPSG:4326",
+                           transform=from_bounds(lon0, lat0, lon0 + 3, lat0 + 3, 60, 60), nodata=0) as dst:
+            dst.write(a, 1)
+
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        tesela(d / "a.tif", -39, -72, lambda i, j: (10, 80))            # bosque, con un pixel de agua por bloque
+        tesela(d / "b.tif", -39, -75, lambda i, j: (40, 50))            # cultivos, con un pixel construido
+        fuentes = {(-39, -72): d / "a.tif", (-39, -75): d / "b.tif", (-42, -72): d / "no_existe.tif"}
+        out = W.mosaico_decimado(fuentes, d / "m.tif", factor=2)
+        with rasterio.open(out) as m:
+            assert m.crs.to_epsg() == 4326 and m.dtypes[0] == "uint8" and m.nodata == 0 and abs(m.res[0] - 0.1) < 1e-9
+            assert m.bounds.left == -75 and m.bounds.right == -69 and m.bounds.top == -36 and m.bounds.bottom == -42
+            assert set(np.unique(m.read(1)).tolist()) <= {0, 10, 40}, "mode: nunca aparecen 80 ni 50 ni valores intermedios"
+            assert next(m.sample([(-70.5, -37.5)]))[0] == 10 and next(m.sample([(-73.5, -37.5)]))[0] == 40
+            assert next(m.sample([(-70.5, -40.5)]))[0] == 0, "la tesela faltante queda sin dato"
+        assert W.mosaico_decimado(fuentes, out, factor=2).stat().st_mtime == out.stat().st_mtime, "no se repite"
+        try:
+            W.mosaico_decimado({(-39, -72): d / "nada.tif"}, d / "z.tif", factor=2)
+            raise AssertionError("sin teselas debe fallar")
+        except RuntimeError as ex:
+            assert "Ninguna tesela" in str(ex)
+        assert not (d / "z.parte").exists() and not (d / "z.tif").exists()
+
+        # generador completo: máscara de un cuadro dentro de la tesela a; clases con la rampa categórica
+        gpd.GeoDataFrame({"cod_comuna": [9101], "Comuna": ["A"], "Region": ["Región de La Araucanía"]},
+                         geometry=[box(-71.5, -38.5, -70.5, -37.5)], crs=4326).to_file(d / "c.gpkg", driver="GPKG")
+        cfg = {"paths": {"comunas": str(d / "c.gpkg")}, "comunas": {"field_cut": "cod_comuna", "field_nombre": "Comuna", "field_region": "Region"}}
+        c = {"id": "cob", "nombre": "Cobertura", "zoom": [6, 8], "fuente": {"atribucion": "ESA de prueba"},
+             "generacion": {"parametros": {"factor": 2}},
+             "estilo": {"rampa": [[10, "#006400"], [20, "#ffbb22"], [40, "#f096ff"]], "interpolacion": "escalon"}}
+        pref, url0 = W.PREFIJO, W.tesela_url
+        W.PREFIJO = ""
+        W.tesela_url = lambda lat0, lon0: str({(-39, -72): d / "a.tif", (-39, -75): d / "b.tif"}.get((lat0, lon0), d / "no.tif"))
+        try:
+            pm = W.worldcover(c, d / "raw", d / "cob.pmtiles", cfg)
+        finally:
+            W.PREFIJO, W.tesela_url = pref, url0
+        assert R.encabezado(pm)["metadata"]["attribution"] == "ESA de prueba"
+        t = mercantile.tile(-71.0, -38.0, 8)
+        x0, y0, x1, y1 = mercantile.xy_bounds(t)
+        mx, my = mercantile.xy(-71.0, -38.0)
+        px = R.leer_tesela(pm, 8, t.x, t.y)[int((y1 - my) / (y1 - y0) * 256), int((mx - x0) / (x1 - x0) * 256)]
+        assert list(px) == [0, 100, 0, 255], px
+    print("  temas worldcover: OK")
+
+
 def test_rescate_geos():
     """Si GEOS falla con precisión flotante (non-noded intersection), la superposición de riesgo
     reintenta con make_valid + GRID_RESCATE y cuenta el rescate (caso real: Chañaral)."""
@@ -1475,6 +1679,8 @@ if __name__ == "__main__":
     test_temas_generadores_comunes()
     test_temas_worldclim()
     test_temas_soilgrids()
+    test_temas_relieve()
+    test_temas_worldcover()
     test_rescate_geos()
     test_paginacion_arcgis()
     print("OK")

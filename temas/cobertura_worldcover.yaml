@@ -1,11 +1,11 @@
 id: cobertura_worldcover
 nombre: Cobertura y uso del suelo (10 m)
 categoria: cobertura
-estado: propuesta
+estado: activa
 tipo: raster
 fuente:
   nombre: ESA WorldCover 2021 v200
-  url: https://esa-worldcover.org/en/data-access
+  url: https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/
   version: "v200 (2021)"
   fecha_dato: "2021"
   resolucion: "10 m"
@@ -13,9 +13,10 @@ fuente:
   licencia_verificada: true
   uso_comercial: si
   atribucion: "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium. CC BY 4.0"
+  acceso: {verificado: true, fecha_verificacion: "2026-10-04", como: "teselas COG de 3° en S3 (HEAD 200 en las 9 probadas); lectura reducida 10x por internet con overviews", tamano_mb: 117}
 generacion:
   generador: worldcover
-  parametros: {}
+  parametros: {factor: 10}
 estilo:
   unidad: "clase"
   interpolacion: escalon
@@ -43,7 +44,7 @@ estilo:
     - {etiqueta: Humedal herbáceo, color: "#0096a0"}
     - {etiqueta: Manglar, color: "#00cf75"}
     - {etiqueta: Musgo y líquenes, color: "#fae6a0"}
-zoom: [4, 12]
+zoom: [4, 10]
 nota: >
-  Clasificación automática de imágenes Sentinel: exactitud global de ≈ 75 %. Referencial, no un catastro. Cada tesela de
-  3° pesa cientos de MB; el piloto va por ventanas.
+  Clasificación automática de imágenes Sentinel: exactitud global de ≈ 75 %. Referencial, no un catastro. Se lee reducido 10x
+  (de 10 m a ≈ 90 m) con el valor más frecuente: es una vista nacional, no el dato a 10 m.

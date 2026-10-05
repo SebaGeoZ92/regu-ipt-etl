@@ -31,6 +31,8 @@ def descargar(url: str, destino: Path, *, esperado_mb: float | None = None, rein
     total = None
     try:
         h = requests.head(url, headers=UA, timeout=30, allow_redirects=True)
+        if h.status_code in (403, 404):
+            raise FileNotFoundError(f"{url}: HTTP {h.status_code} (no existe)")      # no se reintenta
         total = int(h.headers["content-length"]) if h.ok and "content-length" in h.headers else None
     except requests.RequestException:
         pass
@@ -46,6 +48,8 @@ def descargar(url: str, destino: Path, *, esperado_mb: float | None = None, rein
             with requests.get(url, headers={**UA, **({"Range": f"bytes={ya}-"} if ya else {})}, stream=True, timeout=60) as r:
                 if r.status_code == 416 and total is not None and ya == total:
                     break
+                if r.status_code in (403, 404):
+                    raise FileNotFoundError(f"{url}: HTTP {r.status_code} (no existe)")
                 r.raise_for_status()
                 modo = "ab" if ya and r.status_code == 206 else "wb"
                 if modo == "wb":
