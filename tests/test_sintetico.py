@@ -831,6 +831,62 @@ def test_app_teselas():
     print("  app teselas: OK")
 
 
+def test_app_temas():
+    """M4 de mapas temáticos: /api/temas (sin rutas del disco), /tiles/temas con Range, recarga y contrato inválido."""
+    import copy
+    import os
+    import yaml
+    from fastapi.testclient import TestClient
+    from app.main import crear_app
+    from etl import temas as T
+
+    base = copy.deepcopy(T.cargar_catalogo()["clima_temperatura_media_anual"])
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        a = _app_fixture(d)
+        a.dir_temas = d / "temas"
+        a.dir_temas.mkdir()
+
+        def escribir(id_, estado="activa", **extra):
+            c = {**copy.deepcopy(base), "id": id_, "estado": estado, **extra}
+            (a.dir_temas / f"{id_}.yaml").write_text(yaml.safe_dump(c, allow_unicode=True), encoding="utf-8")
+
+        escribir("tema_a")
+        escribir("tema_b", nombre="Tema B sin tesela")
+        escribir("tema_c", estado="propuesta")
+        (Path(a.dir_out) / "tiles" / "temas").mkdir(parents=True)
+        (Path(a.dir_out) / "tiles" / "temas" / "tema_a.pmtiles").write_bytes(b"PMTiles" + bytes(range(200)))
+        (Path(a.dir_out) / "tiles" / "temas" / "tema_c.pmtiles").write_bytes(b"PMTiles-no-debe-servirse")
+        c = TestClient(crear_app(a))
+        r = c.get("/api/temas").json()
+        ids = {t["id"]: t for t in r["temas"]}
+        assert set(ids) == {"tema_a", "tema_b"} and r["error"] is None, "las propuestas no se muestran"
+        assert ids["tema_a"]["disponible"] is True and ids["tema_b"]["disponible"] is False
+        t = ids["tema_a"]
+        assert t["estilo"]["rampa"] and t["fuente"]["atribucion"] and t["zoom"] == [3, 8] and t["tipo"] == "raster" and not t["publicable"]
+        assert "generacion" not in t and str(d) not in json.dumps(r), "sin rutas del disco ni detalles de generación"
+        # teselas: completa, con Range, tema sin tesela, propuesta y desconocido
+        total = (Path(a.dir_out) / "tiles" / "temas" / "tema_a.pmtiles").read_bytes()
+        assert c.get("/tiles/temas/tema_a.pmtiles").content == total
+        rr = c.get("/tiles/temas/tema_a.pmtiles", headers={"Range": "bytes=0-6"})
+        assert rr.status_code == 206 and rr.content == b"PMTiles" and rr.headers["content-range"] == f"bytes 0-6/{len(total)}"
+        e = c.get("/tiles/temas/tema_b.pmtiles")
+        assert e.status_code == 404 and "temas generar --tema tema_b" in e.json()["detail"]
+        assert c.get("/tiles/temas/tema_c.pmtiles").status_code == 404, "una propuesta no se sirve aunque exista el archivo"
+        assert c.get("/tiles/temas/no_existe.pmtiles").status_code == 404
+        # recarga: un tema nuevo aparece sin reiniciar; un contrato inválido no tumba la app y se informa
+        escribir("tema_d")
+        assert "tema_d" in {x["id"] for x in c.get("/api/temas").json()["temas"]}
+        (a.dir_temas / "roto.yaml").write_text("id: roto\nzoom: [9, 3]\n", encoding="utf-8")
+        os.utime(a.dir_temas / "roto.yaml", (1_900_000_000, 1_900_000_000))
+        r = c.get("/api/temas").json()
+        assert r["temas"] == [] and "roto.yaml" in r["error"], "con un contrato inválido se informa y no se cae"
+        assert c.get("/api/ficha", params={"lon": -72.595, "lat": -38.738}).status_code == 200, "el resto de la app sigue funcionando"
+        (a.dir_temas / "roto.yaml").unlink()
+        assert {x["id"] for x in c.get("/api/temas").json()["temas"]} == {"tema_a", "tema_b", "tema_d"} and c.get("/api/temas").json()["error"] is None
+    print("  app temas: OK")
+
+
 def test_app_basemap():
     """Mapa base OSM: proxy con User-Agent identificable, caché en disco, copia vencida sin internet y respuestas inválidas."""
     import os
@@ -1340,6 +1396,7 @@ if __name__ == "__main__":
     test_envolvente_sintetico()
     test_app_edificios_volumen()
     test_app_teselas()
+    test_app_temas()
     test_app_basemap()
     test_app_lamina()
     test_temas_catalogo()

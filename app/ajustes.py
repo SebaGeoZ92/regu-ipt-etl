@@ -35,6 +35,7 @@ class Ajustes:
     user_agent: str = "ReguSueloLocal/1.0 (uso local; +https://github.com/SebaGeoZ92/regu-ipt-etl)"   # app.user_agent
     osm_url: str = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
     osm_ttl_dias: int = 14                 # una tesela OSM en disco se reutiliza este tiempo antes de pedirla otra vez
+    dir_temas: Path | None = None          # contratos de mapas temáticos (temas/*.yaml); por defecto el del repo
 
     @classmethod
     def desde_cfg(cls, cfg: dict, ruta: Callable[[dict, str], Path], gpkg: Path | None = None) -> "Ajustes":

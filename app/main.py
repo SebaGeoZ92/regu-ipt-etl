@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from shapely.geometry import Point, shape
 from shapely.geometry.base import BaseGeometry
 
-from etl import envolvente
+from etl import envolvente, temas
 from etl.ficha import ficha as calcular_ficha
 from etl.normalize import norm_txt
 
@@ -55,6 +55,7 @@ def geometria_de(geojson: dict) -> BaseGeometry:
 def crear_app(a: Ajustes) -> FastAPI:
     app = FastAPI(title="Regu Suelo · local", docs_url="/api/docs", openapi_url="/api/openapi.json")
     app.state.ajustes = a
+    app.state.temas = {}
 
     def _ficha(g: BaseGeometry) -> dict:
         t0 = time.perf_counter()
@@ -77,6 +78,39 @@ def crear_app(a: Ajustes) -> FastAPI:
         except lamina.LaminaNoDisponible as ex:
             raise HTTPException(409, str(ex) or "No hay PMTiles regional para el minimapa: corre `python run.py mapa --region <región>`") from ex
         return FileResponse(pdf, media_type="application/pdf", filename=f"lamina_comunal_{cut}.pdf")
+
+    def _catalogo() -> dict:
+        """Catálogo de temas (temas/*.yaml); se relee solo si cambió algún archivo. Un contrato inválido no tumba la app."""
+        d = Path(a.dir_temas or temas.DIR_TEMAS)
+        clave = tuple((p.name, p.stat().st_mtime) for p in sorted(d.glob("*.yaml")))
+        if getattr(app.state, "temas_clave", None) != clave:
+            try:
+                app.state.temas = temas.cargar_catalogo(d)
+            except ValueError as ex:
+                app.state.temas = {}
+                app.state.temas_error = str(ex)
+            else:
+                app.state.temas_error = None
+            app.state.temas_clave = clave
+        return app.state.temas
+
+    @app.get("/api/temas")
+    def api_temas():
+        """Mapas temáticos de referencia: estilo, procedencia y si su salida existe (nunca rutas del disco)."""
+        cat = _catalogo()
+        return {"temas": [temas.publico(c, a.dir_out) for c in cat.values() if c["estado"] != "propuesta"],
+                "error": getattr(app.state, "temas_error", None)}
+
+    @app.get("/tiles/temas/{tema}.pmtiles")
+    def tiles_tema(tema: str):
+        """PMTiles de un tema activo (con Range, como las demás teselas)."""
+        c = _catalogo().get(tema)
+        if c is None or c["estado"] == "propuesta":
+            raise HTTPException(404, f"Tema desconocido: {tema}")
+        p = temas.ruta_salida(a.dir_out, tema)
+        if not p.exists():
+            raise HTTPException(404, f"Falta la tesela del tema {tema}: corre `python run.py temas generar --tema {tema}`")
+        return FileResponse(p, media_type="application/octet-stream", headers={"Cache-Control": "no-cache"})
 
     @app.get("/basemap/osm/{z}/{x}/{y}.png")
     def basemap_osm(z: int, x: int, y: int):
