@@ -33,6 +33,7 @@
   #sugerencias small { color: var(--muted); }
   #mapa { position: relative; background: var(--map-bg); min-height: 0; }
   #capas { position: absolute; top: 10px; left: 10px; z-index: 2; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; max-width: 250px; }
+  #capas { max-height: calc(100% - 110px); overflow-y: auto; }   /* deja libre el aviso de estado y la escala; hace scroll si no cabe */
   #capas h2 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
   #capas label { display: flex; align-items: center; gap: 6px; margin: 3px 0; cursor: pointer; }
   #capas h2.sub { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
@@ -59,6 +60,11 @@
   .kpi { border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
   .kpi b { display: block; font-size: 17px; line-height: 1.2; }
   .kpi span { color: var(--muted); font-size: 11.5px; }
+  #tema { width: 100%; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; }
+  #op-tema[hidden] { display: none; }
+  .barra { height: 10px; border-radius: 3px; border: 1px solid rgba(0,0,0,.25); margin: 4px 0 2px; }
+  .barra-etq { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 11px; }
+  .aviso-licencia { background: var(--warn-bg); color: var(--warn-fg); border-radius: 4px; padding: 1px 6px; font-size: 11.5px; margin-top: 3px; display: inline-block; }
   .kpi span.chip { color: #fff; font-size: 12px; }
   .chip { display: inline-block; border-radius: 10px; padding: 0 8px; font-size: 12px; font-weight: 600; color: #fff; background: #7a847c; vertical-align: 1px; }
   .chip.holgura { background: #2e7d4f; } .chip.al_limite { background: #b7791f; } .chip.excede { background: #b3261e; }
@@ -109,6 +115,10 @@
       <label><input type="checkbox" data-capa="edificios" checked> Edificios (3D desde zoom 15)</label>
       <div class="opacidad"><input type="range" min="0" max="100" step="1" data-opacidad="edificios" aria-label="Transparencia de los edificios"><output></output></div>
       <label><input type="checkbox" data-capa="comunas" checked> Límites comunales</label>
+      <h2 class="sub">Mapa temático</h2>
+      <select id="tema" aria-label="Mapa temático de referencia"><option value="">Ninguno</option></select>
+      <div class="opacidad" id="op-tema" hidden><input type="range" min="0" max="100" step="1" data-opacidad="tema" aria-label="Transparencia del mapa temático"><output></output></div>
+      <div class="leyenda on" id="ley-tema"></div>
       <h2 class="sub">Mapa base</h2>
       <div class="fondo" id="fondos" role="radiogroup" aria-label="Mapa base"></div>
     </div>
@@ -184,12 +194,15 @@ const capasFondo = Object.keys(fuentesFondo).map((id) => ({id, type: "raster", s
 const OPACIDAD = {
   normativa: {def: 72, aplicar: (v) => { mapa.setPaintProperty("normativa", "fill-opacity", v); mapa.setPaintProperty("riesgo", "fill-opacity", Math.min(1, v * 1.25)); }},
   ocupacion: {def: 88, aplicar: (v) => mapa.setPaintProperty("ocupacion", "fill-opacity", v)},
-  edificios: {def: 92, aplicar: (v) => mapa.setPaintProperty("edificios", "fill-extrusion-opacity", v)}
+  edificios: {def: 92, aplicar: (v) => mapa.setPaintProperty("edificios", "fill-extrusion-opacity", v)},
+  tema: {def: 85, aplicar: (v) => { if (mapa.getLayer("tema")) mapa.setPaintProperty("tema", PROP_OPACIDAD[mapa.getLayer("tema").type], v); }}
 };
+const PROP_OPACIDAD = {raster: "raster-opacity", fill: "fill-opacity", line: "line-opacity", circle: "circle-opacity"};
 const guardado = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
 const guardar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* sin almacenamiento: no se recuerda */ } };
 const opacidades = Object.assign(Object.fromEntries(Object.entries(OPACIDAD).map(([k, o]) => [k, o.def])), guardado("regu.opacidad") || {});
 let fondoActual = FONDOS[guardado("regu.fondo")] ? guardado("regu.fondo") : "ninguno";
+let temaContrato = null;                 // contrato público del mapa temático elegido (de /api/temas)
 
 const mapa = new maplibregl.Map({
   container: "mapa", center: [-72.59, -38.74], zoom: 11, minZoom: 3, maxZoom: 19, hash: true, maxPitch: 70,
@@ -257,8 +270,13 @@ $("b3d").addEventListener("click", () => {
 function elegirFondo(id, avisar = true) {
   fondoActual = id; guardar("regu.fondo", id);
   for (const k of Object.keys(fuentesFondo)) mapa.setLayoutProperty(k, "visibility", k === "base_" + id ? "visible" : "none");
-  const a = $("atrib"); a.innerHTML = FONDOS[id].atrib; a.classList.toggle("on", !!FONDOS[id].atrib);
+  refrescarAtrib();
   if (avisar && id === "ninguno") estado("Sin mapa base: no se pide nada a internet.");
+}
+// Atribución visible: la del mapa base (HTML fijo del código) y la del tema (texto del contrato, escapado)
+function refrescarAtrib() {
+  const partes = [FONDOS[fondoActual].atrib, temaContrato ? esc(temaContrato.fuente.atribucion) : ""].filter(Boolean);
+  const a = $("atrib"); a.innerHTML = partes.join(" · "); a.classList.toggle("on", partes.length > 0);
 }
 $("fondos").innerHTML = Object.entries(FONDOS).map(([k, f]) =>
   `<label><input type="radio" name="fondo" value="${k}"${k === fondoActual ? " checked" : ""}> ${esc(f.nombre)}</label>`).join("");
@@ -273,7 +291,59 @@ document.querySelectorAll("input[data-opacidad]").forEach((s) => {
     OPACIDAD[k].aplicar(opacidades[k] / 100); guardar("regu.opacidad", opacidades);
   });
 });
-mapa.on("load", () => { elegirFondo(fondoActual, false); Object.entries(OPACIDAD).forEach(([k, o]) => o.aplicar(opacidades[k] / 100)); });
+mapa.on("load", () => { elegirFondo(fondoActual, false); Object.entries(OPACIDAD).forEach(([k, o]) => o.aplicar(opacidades[k] / 100)); cargarTemas(); });
+
+// ── Mapas temáticos de referencia (catálogo del servidor, /api/temas): ubicación, clima, suelo, relieve… ────────────
+const CATEGORIAS = {ubicacion: "Ubicación", relieve: "Relieve", suelo: "Suelo", clima: "Clima", cobertura: "Cobertura", agua: "Agua",
+  riesgo: "Riesgo", infraestructura: "Infraestructura", socioeconomico: "Socioeconómico"};
+let temasCat = [];
+async function cargarTemas() {
+  try {
+    const r = await (await fetch("/api/temas")).json();
+    temasCat = r.temas || [];
+    if (r.error) estado("El catálogo de temas tiene errores: " + String(r.error).split("\n")[0], true);
+  } catch (e) { temasCat = []; }
+  const porCat = {};
+  temasCat.forEach((t) => (porCat[t.categoria] = porCat[t.categoria] || []).push(t));
+  $("tema").innerHTML = '<option value="">Ninguno</option>' + Object.entries(CATEGORIAS).filter(([k]) => porCat[k]).map(([k, n]) =>
+    `<optgroup label="${esc(n)}">` + porCat[k].map((t) => `<option value="${esc(t.id)}"${t.disponible ? "" : " disabled"}>${esc(t.nombre)}${t.disponible ? "" : " (sin generar)"}</option>`).join("") + "</optgroup>").join("");
+  const id = guardado("regu.tema");
+  if (id && temasCat.some((t) => t.id === id && t.disponible)) { $("tema").value = id; elegirTema(id, false); }
+}
+function leyendaTema(t) {
+  const e = t.estilo, f = t.fuente;
+  let h = "";
+  if (t.tipo === "raster" && e.rampa && e.interpolacion !== "escalon") {
+    const v0 = e.rampa[0][0], v1 = e.rampa[e.rampa.length - 1][0];
+    h += `<div class="barra" style="background:linear-gradient(to right,${e.rampa.map(([v, c]) => `${c} ${((v - v0) / (v1 - v0) * 100).toFixed(1)}%`).join(",")})"></div>
+      <div class="barra-etq"><span>${fmt(v0)}</span><span>${fmt(e.rampa[Math.floor(e.rampa.length / 2)][0])}</span><span>${fmt(v1)} ${esc(e.unidad || "")}</span></div>`;
+  } else if (e.leyenda && e.leyenda.length) {
+    h += e.leyenda.map((x) => `<div><i style="background:${esc(x.color)}"></i>${esc(x.etiqueta)}</div>`).join("");
+  }
+  h += `<div style="white-space:normal;max-width:215px;margin-top:4px">${esc(f.nombre)}${f.resolucion ? " · " + esc(f.resolucion) : ""}${f.fecha_dato ? " · dato " + esc(f.fecha_dato) : ""}<br>Licencia: ${esc(f.licencia)}
+    ${f.licencia_verificada ? "" : '<br><span class="aviso-licencia">licencia por verificar: solo uso interno</span>'}
+    ${t.nota ? `<details><summary>Límites del dato</summary>${esc(t.nota)}</details>` : ""}</div>`;
+  return h;
+}
+function elegirTema(id, guardarElegido = true) {
+  if (mapa.getLayer("tema")) mapa.removeLayer("tema");
+  if (mapa.getSource("tema")) mapa.removeSource("tema");
+  temaContrato = temasCat.find((t) => t.id === id) || null;
+  if (guardarElegido) guardar("regu.tema", id || null);
+  $("op-tema").hidden = !temaContrato;
+  $("ley-tema").innerHTML = temaContrato ? leyendaTema(temaContrato) : "";
+  refrescarAtrib();
+  if (!temaContrato) return;
+  const t = temaContrato, e = t.estilo, v = opacidades.tema / 100, url = "pmtiles://" + location.origin + "/tiles/temas/" + id + ".pmtiles";
+  if (t.tipo === "raster") {
+    mapa.addSource("tema", {type: "raster", url, tileSize: 256});
+    mapa.addLayer({id: "tema", type: "raster", source: "tema", paint: {"raster-opacity": v, "raster-resampling": e.interpolacion === "escalon" ? "nearest" : "linear"}}, "normativa");
+  } else {
+    mapa.addSource("tema", {type: "vector", url});
+    mapa.addLayer({id: "tema", type: e.tipo_capa, source: "tema", "source-layer": e.capa_origen, paint: {...e.paint, [PROP_OPACIDAD[e.tipo_capa]]: v}}, "normativa");
+  }
+}
+$("tema").addEventListener("change", (ev) => elegirTema(ev.target.value));
 
 let fallaFondo = false;
 function estado(txt, alerta = false) { const e = $("estado"); e.textContent = txt; e.classList.toggle("alerta", alerta); }
@@ -281,7 +351,8 @@ mapa.on("error", (e) => {
   const fuente = e.sourceId || (e.error && e.error.sourceId);
   if (fuente && fuente.startsWith("base_")) {      // el mapa base no cargó (sin internet o servicio caído): se avisa una sola vez
     if (!fallaFondo) { fallaFondo = true; estado("El mapa base no cargó (¿sin internet?). Elige «Sin fondo» para trabajar sin conexión.", true); }
-  } else if (fuente) estado(`Falta la tesela «${fuente}»: corre «python run.py teselas ${fuente}».`, true);
+  } else if (fuente === "tema") estado("El mapa temático no cargó: corre «python run.py temas generar --tema <id>».", true);
+  else if (fuente) estado(`Falta la tesela «${fuente}»: corre «python run.py teselas ${fuente}».`, true);
 });
 
 // ── Edificios del área visible (DuckDB en el servidor): tope y simplificación según zoom ─────────────────────────────

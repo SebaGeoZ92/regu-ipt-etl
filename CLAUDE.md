@@ -265,12 +265,20 @@ Base del **SIG propio**: generador local de mapas de ubicación, suelo, clima, r
 |---|---|---|---|---|
 | M0 | Especificación y backlog | Claude Code | Sí (Paso 0) | hecho (este commit) |
 | M1 | Catálogo `temas/*.yaml`, `temas/_esquema.json`, `etl/temas.py` y `python run.py temas estado\|validar\|generar` | Claude Code | No | hecho (`e23f1ad`): siete contratos en estado `propuesta` |
-| M2 | Teselador ráster: GeoTIFF → rampa de colores → XYZ → MBTiles → PMTiles (`etl/raster_tiles.py`), con test sintético | Claude Code | Sí (instalar) | en curso (Claude Code, 4-oct-2026) |
-| M3 | Temas iniciales: ubicación (regiones y comunas), clima (WorldClim: temperatura y precipitación anuales), suelo (SoilGrids), relieve (GLO-30, piloto La Araucanía) y cobertura (WorldCover) | Claude Code | Sí (descargas) | pendiente |
-| M4 | App: `/api/temas`, `/tiles/temas/{id}.pmtiles` y selector «Mapa temático» con leyenda, atribución y transparencia | Claude Code | No | pendiente |
+| M2 | Teselador ráster: GeoTIFF → rampa de colores → XYZ → MBTiles → PMTiles (`etl/raster_tiles.py`), con test sintético | Claude Code | Sí (instalar) | hecho (`7fa13d1`) |
+| M3 | Temas iniciales: ubicación (regiones y comunas), clima (WorldClim: temperatura y precipitación anuales), suelo (SoilGrids), relieve (GLO-30, piloto La Araucanía) y cobertura (WorldCover) | Claude Code | Sí (descargas) | **en curso**: hechos ubicación (`a9b3edc`) y clima (`196e7f0`); faltan suelo, relieve y cobertura |
+| M4 | App: `/api/temas`, `/tiles/temas/{id}.pmtiles` y selector «Mapa temático» con leyenda, atribución y transparencia | Claude Code | No | hecho (`523e36a` y el commit de la interfaz); verificado en Chrome con `tests/ui/prueba_temas.js` |
 | M5 | Valor al clic (muestreo del ráster) y *ficha de lugar* con suelo, clima y relieve | Claude Code | No | pendiente |
 | M6 | Los temas en las láminas de `sig/` | Claude Code | No | pendiente: depende del PR de `sig/` |
 | M7 | Suelo y geología oficiales (CIREN, SERNAGEOMIN) cuando el acceso funcione | Claude Code | Sí | pendiente: los portales no responden |
+
+Traspaso M1 a M4 (4-oct-2026):
+- **Catálogo** (`temas/*.yaml` + `temas/_esquema.json`, `etl/temas.py`): estados `propuesta → mapeada → activa`; `mapeada` y `activa` exigen url, fecha del dato, `acceso.verificado` y generador. Solo es **publicable** con la licencia verificada y `uso_comercial: si`. `python run.py temas [estado|validar|generar --tema ID]`. Hoy: **activos** `ubicacion_division`, `clima_temperatura_media_anual` y `clima_precipitacion_anual`; en `propuesta` los dos de SoilGrids, `relieve_altitud` y `cobertura_worldcover`.
+- **Teselador ráster** (`etl/raster_tiles.py`, `rasterio` + Pillow + `pmtiles`): reproyecta por tesela a Web Mercator, rampa lineal o por escalones, factor de unidades, máscara de Chile y nodata transparentes; lee cualquier proyección (probado con UTM). **Aviso de entorno:** en este PC las variables de máquina `PROJ_LIB` y `GDAL_DATA` apuntan a la instalación de PostgreSQL/PostGIS (PROJ antiguo) y rompen a `rasterio`; el módulo las corrige solo dentro de su proceso, no hay que tocar el sistema.
+- **Generadores** (`etl/temas_gen/`): `division` (BCN, vectorial, 17 MB, un color por región), `worldclim_bio` (el zip de **658 MB** se baja una vez a `<raw>/temas/_compartido/` con reanudación y cada tema extrae su GeoTIFF; 221 teselas, 4 MB por tema) y utilidades comunes (`descargar`, `mascara_chile`). La BCN trae geometrías inválidas: se hacen válidas antes de unirlas.
+- **App**: `GET /api/temas` (solo temas fuera de `propuesta`, sin rutas del disco, recarga al cambiar un contrato; un contrato inválido se informa pero no tumba la app), `/tiles/temas/{id}.pmtiles` con *Range*, y el selector «Mapa temático» agrupado por categoría con degradado o leyenda de categorías, transparencia propia, atribución combinada con la del mapa base y «licencia por verificar» a la vista. Recuerda tema y transparencia al recargar.
+- **Pendiente de licencias:** WorldClim sigue «por verificar» (se muestra el aviso en la leyenda); BCN también.
+- **Límites a no olvidar**: son productos de contexto a 4,5 km (clima) y de uso interno hasta verificar licencias; la leyenda lo dice.
 
 Licencias verificadas el 4-oct-2026: SoilGrids **CC BY 4.0** (ISRIC), ESA WorldCover **CC BY 4.0** (sin restricción de uso) y Copernicus GLO-30 **licencia gratuita mundial con atribución**. **WorldClim: licencia por verificar** (su sitio no se pudo leer automáticamente); no publicar ese tema hasta confirmarla. SoilGrids y WorldClim son productos modelados y globales: sirven de contexto, no para decidir sobre un predio.
 

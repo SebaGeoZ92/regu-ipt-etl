@@ -820,6 +820,9 @@ def test_app_teselas():
         for tema in ("normativa", "ocupacion", "edificios"):
             assert f'data-opacidad="{tema}"' in r.text, tema
         assert "regu.opacidad" in r.text and "localStorage" in r.text and "catch (e)" in r.text, "recuerda con try/catch"
+        # M4: selector de mapas temáticos con leyenda, transparencia propia, atribución y memoria
+        for clave in ('id="tema"', 'fetch("/api/temas")', "/tiles/temas/", '"regu.tema"', '"raster-opacity"', "licencia por verificar", "refrescarAtrib"):
+            assert clave in r.text, clave
         # A5: dibujo de predio, volumen 3D (existente sólido y envolvente translúcida) y marca BORRADOR
         for clave in ('id="bdibujar"', 'id="blimpiar"', '"/api/volumen"', '"/api/ficha"', 'id: "existente3d"', 'id: "envolvente3d"',
                       '"fill-extrusion-opacity": 0.38', "Envolvente posible, fase 1 (sin rasantes)", "Simplificaciones y supuestos",
