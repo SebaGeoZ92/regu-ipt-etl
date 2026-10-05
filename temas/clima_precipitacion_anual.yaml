@@ -17,6 +17,7 @@ fuente:
 generacion:
   generador: worldclim_bio
   parametros: {archivo: wc2.1_2.5m_bio_12.tif}
+muestreo: {archivo: wc2.1_2.5m_bio_12.tif, decimales: 0}
 estilo:
   unidad: "mm/año"
   interpolacion: lineal

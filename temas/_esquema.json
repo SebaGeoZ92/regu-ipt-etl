@@ -45,6 +45,15 @@
         "parametros": {"type": "object"}
       }
     },
+    "muestreo": {
+      "type": "object",
+      "required": ["archivo"],
+      "additionalProperties": false,
+      "properties": {
+        "archivo": {"type": "string", "minLength": 3},
+        "decimales": {"type": "integer", "minimum": 0, "maximum": 4}
+      }
+    },
     "estilo": {
       "type": "object",
       "additionalProperties": false,

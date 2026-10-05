@@ -17,6 +17,7 @@ fuente:
 generacion:
   generador: soilgrids
   parametros: {variable: clay, profundidad: 0-5cm}
+muestreo: {archivo: clay_0-5cm_chile.tif, decimales: 1}
 estilo:
   unidad: "%"
   factor: 0.1

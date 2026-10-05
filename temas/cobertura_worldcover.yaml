@@ -17,6 +17,7 @@ fuente:
 generacion:
   generador: worldcover
   parametros: {factor: 10}
+muestreo: {archivo: cobertura_chile.tif}
 estilo:
   unidad: "clase"
   interpolacion: escalon

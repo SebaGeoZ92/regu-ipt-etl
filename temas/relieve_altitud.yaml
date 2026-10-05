@@ -17,6 +17,7 @@ fuente:
 generacion:
   generador: glo30
   parametros: {region: Araucan, azimut: 315, altura_sol: 45, exageracion: 1.5, intensidad: 0.55}
+muestreo: {archivo: dem.tif, decimales: 0}
 estilo:
   unidad: "m"
   interpolacion: lineal

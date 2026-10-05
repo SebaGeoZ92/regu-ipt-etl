@@ -101,6 +101,22 @@ def crear_app(a: Ajustes) -> FastAPI:
         return {"temas": [temas.publico(c, a.dir_out) for c in cat.values() if c["estado"] != "propuesta"],
                 "error": getattr(app.state, "temas_error", None)}
 
+    @app.get("/api/lugar")
+    def api_lugar(lon: float = Query(..., ge=-180, le=180), lat: float = Query(..., ge=-90, le=90)):
+        """Contexto de un punto: el valor de cada mapa temático activo (clima, suelo, relieve, cobertura…), con su fuente y
+        resolución. Son productos de referencia y modelados: no reemplazan estudios de proyecto."""
+        t0 = time.perf_counter()
+        filas = []
+        for c in _catalogo().values():
+            if c["estado"] == "propuesta" or a.dir_raw is None:
+                continue
+            v = temas.valor_en_punto(c, Path(a.dir_raw), lon, lat)
+            if v is not None:
+                filas.append(v)
+        return {"temas": filas, "tiempo_ms": round((time.perf_counter() - t0) * 1000),
+                "aviso": "Contexto de referencia a escala regional (productos globales o modelados, de 10 m a 4,5 km): no reemplaza "
+                         "un estudio de suelo, climático ni topográfico del predio."}
+
     @app.get("/tiles/temas/{tema}.pmtiles")
     def tiles_tema(tema: str):
         """PMTiles de un tema activo (con Range, como las demás teselas)."""

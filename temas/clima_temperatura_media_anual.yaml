@@ -17,6 +17,7 @@ fuente:
 generacion:
   generador: worldclim_bio
   parametros: {archivo: wc2.1_2.5m_bio_1.tif}
+muestreo: {archivo: wc2.1_2.5m_bio_1.tif, decimales: 1}
 estilo:
   unidad: "°C"
   interpolacion: lineal

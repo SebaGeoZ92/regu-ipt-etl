@@ -62,6 +62,21 @@ const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
     dibujados: mapa.queryRenderedFeatures({layers: ["tema"]}).length, ejemplo: (mapa.queryRenderedFeatures({layers: ["tema"]})[0] || {properties: {}}).properties.region}));
   await foto("tema_ubicacion");
 
+  // 3b) contexto del lugar: clic en el centro urbano de Temuco y en un punto rural (el suelo tiene valor donde no está construido)
+  await p.select("#tema", "");
+  const clic = async (lon, lat, zoom) => {
+    await p.evaluate((a, b, z) => mapa.jumpTo({center: [a, b], zoom: z, pitch: 0}), lon, lat, zoom);
+    await esperarMapa(30000);
+    const c = await (await p.$("#mapa")).boundingBox();
+    await p.mouse.click(c.x + c.width / 2, c.y + c.height / 2);
+    await p.waitForFunction(() => /Contexto del lugar/.test(document.getElementById("panel").innerText), {timeout: 15000}).catch(() => {});
+    return await p.evaluate(() => { const l = document.getElementById("lugar"); return l ? l.innerText.replace(/\n+/g, " | ").slice(0, 900) : "(sin bloque de contexto)"; });
+  };
+  out.lugarUrbano = await clic(-72.5904, -38.7359, 14);
+  out.lugarRural = await clic(-72.3, -38.85, 13);
+  await foto("tema_lugar");
+  await p.select("#tema", "ubicacion_division"); await esperarMapa(30000);      // se vuelve al tema de antes para la prueba de recarga
+
   // 4) recargar: recuerda el tema y su transparencia; «Ninguno» lo quita
   await p.reload({waitUntil: "domcontentloaded"}); await esperarMapa();
   await p.waitForFunction(() => !!mapa.getLayer("tema"), {timeout: 20000}).catch(() => {});

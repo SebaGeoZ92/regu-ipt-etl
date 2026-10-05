@@ -382,6 +382,7 @@ mapa.on("click", async (ev) => {
   marcador && marcador.remove();
   marcador = new maplibregl.Marker({color: "#1f5f73"}).setLngLat([lng, lat]).addTo(mapa);
   $("panel").innerHTML = "<h2>Ficha normativa</h2><p class='vacio'>Consultando…</p>";
+  lugarHTML = ""; cargarLugar(lng, lat);
   try {
     const r = await fetch(`/api/ficha?lon=${lng.toFixed(6)}&lat=${lat.toFixed(6)}`);
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -421,7 +422,31 @@ function mostrarFicha(f, previo = "", marca = false) {
       <div class="meta">${esc(a.tipo || "")} · ${esc(a.capa || "")}${a.pct < 99.99 ? ` · ${fmt(a.pct, 1)} %` : ""}</div>${a.detalle ? `<div class="meta">${esc(a.detalle)}</div>` : ""}</div>`).join("");
   }
   h += `<p class="meta" style="margin-top:14px">${esc(f.aviso)}</p>`;
-  $("panel").innerHTML = h;
+  $("panel").innerHTML = h + lugarHTML;
+}
+
+// ── Contexto del lugar: valor de cada mapa temático (clima, suelo, relieve, cobertura) en el punto ─────────────────
+let lugarHTML = "", tokenLugar = 0;
+function filaLugar(t) {
+  const sin = t.valor == null;
+  const v = sin ? "—" : (t.etiqueta ? esc(t.etiqueta) : `${fmt(t.valor, Number.isInteger(t.valor) ? 0 : 1)} ${esc(t.unidad || "")}`);
+  return `<tr><th>${esc(t.nombre)}</th><td>${v}${sin && t.motivo ? `<br><span class="meta">${esc(t.motivo)}</span>` : ""}<br><span class="meta">${esc(t.fuente)}${t.resolucion ? " · " + esc(t.resolucion) : ""}${t.licencia_verificada ? "" : " · uso interno"}</span></td></tr>`;
+}
+async function cargarLugar(lng, lat) {
+  const mi = ++tokenLugar;
+  lugarHTML = "";
+  try {
+    const r = await fetch(`/api/lugar?lon=${lng.toFixed(6)}&lat=${lat.toFixed(6)}`);
+    if (!r.ok || mi !== tokenLugar) return;
+    const l = await r.json();
+    if (mi !== tokenLugar || !l.temas.length) return;
+    const porCat = {};
+    l.temas.forEach((t) => (porCat[t.categoria] = porCat[t.categoria] || []).push(t));
+    lugarHTML = `<div id="lugar"><h3>Contexto del lugar</h3><table class="normas">` +
+      Object.entries(CATEGORIAS).filter(([k]) => porCat[k]).map(([k, n]) => `<tr><th colspan="2" style="width:auto;color:var(--fg)">${esc(n)}</th></tr>` + porCat[k].map(filaLugar).join("")).join("") +
+      `</table><p class="meta">${esc(l.aviso)}</p></div>`;
+    $("lugar") ? ($("lugar").outerHTML = lugarHTML) : $("panel").insertAdjacentHTML("beforeend", lugarHTML);
+  } catch (e) { /* el contexto es opcional: la ficha no depende de él */ }
 }
 
 // ── Dibujar un predio → ficha del polígono y volumen en 3D (existente sólido, envolvente posible translúcida) ───────
@@ -496,6 +521,8 @@ async function dibujoTerminar() {
     if (!rv.ok) throw new Error((await rv.json()).detail || ("HTTP " + rv.status));
     const v = await rv.json(), f = rf.ok ? await rf.json() : null;
     ultimo = {v, f, idx: Math.max(0, v.escenarios.findIndex((e) => e.estado === "ok"))};
+    const vs = ring.slice(0, -1);
+    cargarLugar(vs.reduce((s, q) => s + q[0], 0) / vs.length, vs.reduce((s, q) => s + q[1], 0) / vs.length);   // contexto en el centro del predio
     mostrarPredio(true);
     estado(`Predio de ${fmt(v.existente.sup_terreno_m2)} m² · zona ${v.zona.zona || v.zona.clase}.`);
   } catch (e) {

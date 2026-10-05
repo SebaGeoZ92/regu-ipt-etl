@@ -121,6 +121,37 @@ def publico(c: dict, dir_out: Path) -> dict:
             "disponible": ruta_salida(dir_out, c["id"]).exists(), "publicable": publicable(c)}
 
 
+def valor_en_punto(c: dict, dir_raw: Path, lon: float, lat: float) -> dict | None:
+    """Valor de un tema ráster en un punto (EPSG:4326), muestreado de su GeoTIFF local (`muestreo.archivo` en
+    `<raw>/temas/<id>/`). Devuelve None si el tema no declara `muestreo`; con `valor: None` y un `motivo` si no hay dato.
+    Continuos: valor × `estilo.factor`. Categóricos (interpolación en escalón): la clase y su etiqueta de la leyenda."""
+    m = c.get("muestreo")
+    if not m or c["tipo"] != "raster":
+        return None
+    f, e = c["fuente"], c["estilo"]
+    base = {"id": c["id"], "nombre": c["nombre"], "categoria": c["categoria"], "unidad": e.get("unidad", ""),
+            "fuente": f["nombre"], "resolucion": f.get("resolucion"), "licencia_verificada": f["licencia_verificada"],
+            "valor": None, "etiqueta": None, "motivo": None}
+    p = ruta_fuente(dir_raw, c["id"]) / m["archivo"]
+    if not p.exists():
+        return {**base, "motivo": "el dato de origen no está descargado"}
+    from . import raster_tiles  # noqa: F401  (corrige PROJ_LIB/GDAL_DATA antes de importar rasterio)
+    import numpy as np
+    import rasterio
+    with rasterio.open(p) as src:
+        b = src.bounds
+        if not (b.left <= lon <= b.right and b.bottom <= lat <= b.top):
+            return {**base, "motivo": "fuera del área generada de este tema"}
+        v = next(src.sample([(lon, lat)]))[0]
+        if (src.nodata is not None and v == src.nodata) or not np.isfinite(v):
+            return {**base, "motivo": "sin dato en este punto"}
+    if e.get("interpolacion") == "escalon":
+        clases = [r[0] for r in e["rampa"]]
+        etq = e["leyenda"][clases.index(int(v))]["etiqueta"] if int(v) in clases and len(e.get("leyenda", [])) == len(clases) else f"clase {int(v)}"
+        return {**base, "valor": int(v), "etiqueta": etq}
+    return {**base, "valor": round(float(v) * e.get("factor", 1.0), m.get("decimales", 1))}
+
+
 def generar(id_: str, catalogo: dict[str, dict], dir_raw: Path, dir_out: Path, cfg: dict) -> Path:
     """Genera la salida de un tema con su generador registrado. Un tema `propuesta` no se genera."""
     if id_ not in catalogo:

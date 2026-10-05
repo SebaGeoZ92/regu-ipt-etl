@@ -23,6 +23,7 @@ from etl.normalize import ComunaResolver, aplicar_reglas, cut_por_cascada, load_
 from etl.revision import generar_revision, importar_revision  # noqa: E402
 from etl.ficha import ficha  # noqa: E402
 from etl import progreso  # noqa: E402
+from etl import raster_tiles  # noqa: E402,F401  (corrige PROJ_LIB/GDAL_DATA antes de que una prueba importe rasterio)
 
 REG = "Región de La Araucanía"
 
@@ -823,6 +824,9 @@ def test_app_teselas():
         # M4: selector de mapas temáticos con leyenda, transparencia propia, atribución y memoria
         for clave in ('id="tema"', 'fetch("/api/temas")', "/tiles/temas/", '"regu.tema"', '"raster-opacity"', "licencia por verificar", "refrescarAtrib"):
             assert clave in r.text, clave
+        # M5: contexto del lugar (valor de cada tema al clic y en el centro de un predio dibujado)
+        for clave in ("/api/lugar", "Contexto del lugar", "cargarLugar(", "lugarHTML"):
+            assert clave in r.text, clave
         # A5: dibujo de predio, volumen 3D (existente sólido y envolvente translúcida) y marca BORRADOR
         for clave in ('id="bdibujar"', 'id="blimpiar"', '"/api/volumen"', '"/api/ficha"', 'id: "existente3d"', 'id: "envolvente3d"',
                       '"fill-extrusion-opacity": 0.38', "Envolvente posible, fase 1 (sin rasantes)", "Simplificaciones y supuestos",
@@ -844,6 +848,7 @@ def test_app_temas():
     from etl import temas as T
 
     base = copy.deepcopy(T.cargar_catalogo()["clima_temperatura_media_anual"])
+    base.pop("muestreo", None)            # cada prueba declara el suyo
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
         a = _app_fixture(d)
@@ -887,6 +892,45 @@ def test_app_temas():
         assert c.get("/api/ficha", params={"lon": -72.595, "lat": -38.738}).status_code == 200, "el resto de la app sigue funcionando"
         (a.dir_temas / "roto.yaml").unlink()
         assert {x["id"] for x in c.get("/api/temas").json()["temas"]} == {"tema_a", "tema_b", "tema_d"} and c.get("/api/temas").json()["error"] is None
+
+        # M5: valor al clic. Rásters sintéticos en <raw>/temas/<id>/: continuo (×0,1) con un hueco nodata, y categórico con leyenda
+        import rasterio
+        from rasterio.transform import from_bounds
+        a.dir_raw = d / "raw"
+        for id_ in ("tema_a", "tema_b", "tema_d"):
+            (a.dir_temas / f"{id_}.yaml").unlink()
+        escribir("tema_t", nombre="Temperatura de prueba", muestreo={"archivo": "t.tif", "decimales": 1},
+                 estilo={"unidad": "°C", "factor": 0.1, "interpolacion": "lineal", "rampa": [[0, "#000000"], [30, "#ff0000"]]})
+        escribir("tema_cat", nombre="Cobertura de prueba", muestreo={"archivo": "cat.tif"},
+                 estilo={"unidad": "clase", "interpolacion": "escalon", "rampa": [[10, "#006400"], [20, "#ffbb22"]],
+                         "leyenda": [{"etiqueta": "Árboles", "color": "#006400"}, {"etiqueta": "Matorral", "color": "#ffbb22"}]})
+        escribir("tema_sin", nombre="Sin muestreo", estilo={"unidad": "x", "interpolacion": "lineal", "rampa": [[0, "#000000"], [1, "#ffffff"]]})
+        escribir("tema_falta", nombre="Sin descargar", muestreo={"archivo": "no_esta.tif"})
+        escribir("tema_prop", estado="propuesta", muestreo={"archivo": "t.tif"})
+        for id_ in ("tema_t", "tema_cat", "tema_falta"):
+            (d / "raw" / "temas" / id_).mkdir(parents=True)
+        t = np.full((50, 50), 123.0, dtype="float32")
+        t[20:30, 20:30] = -9999
+        for ruta, datos, nd in (("tema_t/t.tif", t, -9999), ("tema_cat/cat.tif", np.full((50, 50), 20, dtype="uint8"), 0)):
+            with rasterio.open(d / "raw" / "temas" / ruta, "w", driver="GTiff", height=50, width=50, count=1, dtype=str(datos.dtype), crs="EPSG:4326",
+                               transform=from_bounds(-73, -39, -71, -38, 50, 50), nodata=nd) as dst:
+                dst.write(datos, 1)
+        r = c.get("/api/lugar", params={"lon": -72.9, "lat": -38.1}).json()
+        f = {x["id"]: x for x in r["temas"]}
+        assert set(f) == {"tema_t", "tema_cat", "tema_falta"}, "sin muestreo y propuestas no aparecen"
+        assert f["tema_t"]["valor"] == 12.3 and f["tema_t"]["unidad"] == "°C" and f["tema_t"]["motivo"] is None and f["tema_t"]["fuente"] and f["tema_t"]["resolucion"]
+        assert f["tema_cat"]["valor"] == 20 and f["tema_cat"]["etiqueta"] == "Matorral"
+        assert f["tema_falta"]["valor"] is None and "no está descargado" in f["tema_falta"]["motivo"]
+        assert r["aviso"] and "no reemplaza" in r["aviso"] and isinstance(r["tiempo_ms"], int) and str(d) not in json.dumps(r)
+        hueco = {x["id"]: x for x in c.get("/api/lugar", params={"lon": -72.0, "lat": -38.5}).json()["temas"]}
+        assert hueco["tema_t"]["valor"] is None and hueco["tema_t"]["motivo"] == "sin dato en este punto" and hueco["tema_cat"]["valor"] == 20
+        fuera = {x["id"]: x for x in c.get("/api/lugar", params={"lon": -60.0, "lat": -30.0}).json()["temas"]}
+        assert fuera["tema_t"]["motivo"] == "fuera del área generada de este tema"
+        assert c.get("/api/lugar", params={"lon": 500, "lat": 0}).status_code == 422
+        # una clase que no está en la leyenda no rompe: se informa como «clase N»
+        with rasterio.open(d / "raw" / "temas" / "tema_cat" / "cat.tif", "r+") as dst:
+            dst.write(np.full((50, 50), 99, dtype="uint8"), 1)
+        assert {x["id"]: x for x in c.get("/api/lugar", params={"lon": -72.9, "lat": -38.1}).json()["temas"]}["tema_cat"]["etiqueta"] == "clase 99"
     print("  app temas: OK")
 
 
