@@ -257,6 +257,23 @@ Traspaso A1 y A2 (`40f9f6c`, `8e953b3`): `app/` (`main.py`, `ajustes.py`, `datos
 - Reglas del cálculo (fase 1, `docs/VOLUMEN_PILOTO.md`): retranqueo uniforme `max(antejardín, distanciamiento)`; si el antejardín trae varios valores según la vía, se usa el menor porque el frente no se identifica; sin rasantes. Un predio angosto sin base edificable devuelve `sin_base` (no un 0 engañoso). Una zona sin normas devuelve solo lo existente. Sin edificios en Overture, el existente es 0 y se avisa. Los pisos sin dato (casi todos: `num_floors` es 0,56 %) se asumen 1 y se marcan cota inferior, confianza baja.
 - Cuidado: con el retranqueo uniforme de 3 a 4 m, los predios chicos (p. ej. los de 100 m² de Villa Antukuyen) quedan sin base edificable; es una limitación declarada de la fase 1.
 
+### Mapas temáticos de referencia (`docs/MAPAS_TEMATICOS.md`)
+
+Base del **SIG propio**: generador local de mapas de ubicación, suelo, clima, relieve y cobertura, un *tema* por mapa (`temas/<id>.yaml`) con su fuente, licencia, atribución y estilo. Por ahora solo local; luego se mueve a un servidor. Paso 0 del 4-oct-2026: WorldClim, SoilGrids y Copernicus GLO-30 responden; **CIREN y SERNAGEOMIN no responden** desde este PC; no hay `rasterio` ni GDAL de línea de comandos (hay que instalar `rasterio`, `pmtiles` y `mercantile`).
+
+| # | Tarea | Responsable | Requiere red | Estado |
+|---|---|---|---|---|
+| M0 | Especificación y backlog | Claude Code | Sí (Paso 0) | hecho (este commit) |
+| M1 | Catálogo `temas/*.yaml`, `temas/_esquema.json`, `etl/temas.py` y `python run.py temas estado\|validar\|generar` | Claude Code | No | en curso (Claude Code, 4-oct-2026) |
+| M2 | Teselador ráster: GeoTIFF → rampa de colores → XYZ → MBTiles → PMTiles (`etl/raster_tiles.py`), con test sintético | Claude Code | Sí (instalar) | pendiente |
+| M3 | Temas iniciales: ubicación (regiones y comunas), clima (WorldClim: temperatura y precipitación anuales), suelo (SoilGrids), relieve (GLO-30, piloto La Araucanía) y cobertura (WorldCover) | Claude Code | Sí (descargas) | pendiente |
+| M4 | App: `/api/temas`, `/tiles/temas/{id}.pmtiles` y selector «Mapa temático» con leyenda, atribución y transparencia | Claude Code | No | pendiente |
+| M5 | Valor al clic (muestreo del ráster) y *ficha de lugar* con suelo, clima y relieve | Claude Code | No | pendiente |
+| M6 | Los temas en las láminas de `sig/` | Claude Code | No | pendiente: depende del PR de `sig/` |
+| M7 | Suelo y geología oficiales (CIREN, SERNAGEOMIN) cuando el acceso funcione | Claude Code | Sí | pendiente: los portales no responden |
+
+Licencias verificadas el 4-oct-2026: SoilGrids **CC BY 4.0** (ISRIC), ESA WorldCover **CC BY 4.0** (sin restricción de uso) y Copernicus GLO-30 **licencia gratuita mundial con atribución**. **WorldClim: licencia por verificar** (su sitio no se pudo leer automáticamente); no publicar ese tema hasta confirmarla. SoilGrids y WorldClim son productos modelados y globales: sirven de contexto, no para decidir sobre un predio.
+
 ## Entorno
 
 - Windows + PowerShell, venv en `.venv` (`.venv\Scripts\activate`), Python 3.12, pandas 3.x, geopandas 1.1.
