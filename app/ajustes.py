@@ -37,6 +37,7 @@ class Ajustes:
     osm_ttl_dias: int = 14                 # una tesela OSM en disco se reutiliza este tiempo antes de pedirla otra vez
     dir_temas: Path | None = None          # contratos de mapas temáticos (temas/*.yaml); por defecto el del repo
     dir_raw: Path | None = None            # datos de origen de los temas (<raw>/temas/<id>/), para el valor al clic
+    dir_predios: Path | None = None        # predios del SII convertidos (python run.py predios convertir): un parquet por comuna
 
     @classmethod
     def desde_cfg(cls, cfg: dict, ruta: Callable[[dict, str], Path], gpkg: Path | None = None) -> "Ajustes":
@@ -50,6 +51,7 @@ class Ajustes:
                    f_cut=c["field_cut"], f_nombre=c["field_nombre"], f_region=c["field_region"],
                    altura_piso_ref_m=float((cfg.get("volumen") or {}).get("altura_piso_ref_m", 3.5)),
                    dir_tiles=out / "tiles", lamina_regiones=_regiones_lamina(cfg), dir_raw=ruta(cfg, "raw"),
+                   dir_predios=ruta(cfg, "predios"),
                    user_agent=(cfg.get("app") or {}).get("user_agent") or cls.user_agent)
 
     @property

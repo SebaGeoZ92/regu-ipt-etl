@@ -20,7 +20,7 @@ from etl import envolvente, temas
 from etl.ficha import ficha as calcular_ficha
 from etl.normalize import norm_txt
 
-from . import basemap, datos, edificios, lamina
+from . import basemap, datos, edificios, lamina, predios
 from .ajustes import MARCA_BORRADOR, TEMAS_TESELAS, Ajustes
 
 STATIC = Path(__file__).parent / "static"
@@ -100,6 +100,44 @@ def crear_app(a: Ajustes) -> FastAPI:
         cat = _catalogo()
         return {"temas": [temas.publico(c, a.dir_out) for c in cat.values() if c["estado"] != "propuesta"],
                 "error": getattr(app.state, "temas_error", None)}
+
+    @app.get("/api/predio")
+    def api_predio(lon: float | None = Query(None, ge=-180, le=180), lat: float | None = Query(None, ge=-90, le=90),
+                   rol: str | None = Query(None, description="manzana-predio, p. ej. 1733-22 o 01733-00022"),
+                   cut: str | None = Query(None, pattern=r"^\d{5}$", description="CUT de la comuna (5 dígitos)"),
+                   cod_sii: str | None = Query(None, pattern=r"^\d{4,5}$", description="código de comuna del SII (9201 = Temuco)"),
+                   comuna: str | None = Query(None, description="nombre de la comuna"),
+                   ficha: bool = Query(True, description="incluir la ficha normativa del polígono")):
+        """Un predio del SII (respaldo personal de catastral.cl), por punto (`lon`, `lat`) o por `rol` más una comuna (`cut`, `cod_sii`
+        o `comuna`). Con `ficha=true` agrega la ficha normativa de su polígono. No incluye avalúo ni propietarios."""
+        por_punto = lon is not None or lat is not None
+        if por_punto == (rol is not None):
+            raise HTTPException(422, "Indica lon y lat, o bien rol más una comuna (cut, cod_sii o comuna)")
+        try:
+            if por_punto:
+                if lon is None or lat is None:
+                    raise HTTPException(422, "Falta lon o lat")
+                r = predios.en_punto(a, lon, lat)
+                if r is None:
+                    raise HTTPException(404, "No hay un predio del respaldo en ese punto (puede ser vía pública o una comuna sin respaldo)")
+            else:
+                dadas = [x for x in (cut, cod_sii, comuna) if x]
+                if len(dadas) != 1:
+                    raise HTTPException(422, "Con rol indica exactamente una comuna: cut, cod_sii o comuna")
+                c = predios.resolver_comuna(a, cut=cut, cod_sii=cod_sii, comuna=comuna)
+                if c is None:
+                    raise HTTPException(404, "La comuna no tiene predios convertidos o no se reconoce (con comuna por nombre, debe ser inequívoco)")
+                try:
+                    r = predios.por_rol(a, c, rol)
+                except ValueError as ex:
+                    raise HTTPException(422, str(ex)) from ex
+                if r is None:
+                    raise HTTPException(404, f"El rol {rol} no está en el respaldo de la comuna {c}")
+        except predios.PrediosNoDisponibles as ex:
+            raise HTTPException(503, str(ex)) from ex
+        if ficha:
+            r["ficha"] = _ficha(shape(r["geometria"]))
+        return datos._sin_nan(r)
 
     @app.get("/api/lugar")
     def api_lugar(lon: float = Query(..., ge=-180, le=180), lat: float = Query(..., ge=-90, le=90)):

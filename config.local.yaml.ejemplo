@@ -6,3 +6,4 @@ paths:
   footprints: D:/regu-data/footprints
   export: D:/regu-data/export
   demanda: D:/regu-data/demanda
+  predios: D:/regu-data/predios_parquet

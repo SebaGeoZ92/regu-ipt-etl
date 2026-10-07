@@ -493,6 +493,32 @@ def cmd_temas(cfg, args):
     sys.exit("Uso: python run.py temas [estado|validar|generar --tema <id>]")
 
 
+def cmd_predios(cfg, args):
+    """Predios del SII (respaldo personal de catastral.cl): `convertir --origen DIR` | `estado`. Ver etl/predios.py."""
+    from etl import predios as P
+    accion = args.archivo or "estado"
+    destino = ruta(cfg, "predios")
+    if accion == "estado":
+        m = destino / "manifiesto_predios.csv"
+        if not m.exists():
+            sys.exit(f"Sin manifiesto en {destino}: corre `python run.py predios convertir --origen <carpeta con los .gpkg>`")
+        df = pd.read_csv(m, encoding="utf-8-sig", dtype={"cut": str, "cod_sii": str})
+        with pd.option_context("display.width", 220, "display.max_columns", 20):
+            print(df.drop(columns=["nombre_en_datos"]).to_string(index=False))
+        print(f"\n{len(df)} archivos · {int(df.n.sum()):,} polígonos · {int(df.n_datos_sii.sum()):,} con datos del SII · {int(df.n_huerfanos.sum()):,} huérfanos")
+        return
+    if accion == "convertir":
+        if not args.origen:
+            sys.exit("Uso: python run.py predios convertir --origen <carpeta con los GeoPackage>")
+        c = cfg["comunas"]
+        bcn = gpd.read_file(ruta(cfg, "comunas")).to_crs(4326)
+        m = P.convertir_todo(Path(args.origen), destino, bcn, c["field_cut"], c["field_nombre"], progreso.paso)
+        print(m.drop(columns=["nombre_en_datos"], errors="ignore").to_string(index=False))
+        print(f"\nManifiesto: {destino / 'manifiesto_predios.csv'} · {int(m.n.sum()):,} polígonos")
+        return
+    sys.exit("Uso: python run.py predios [estado|convertir --origen DIR]")
+
+
 def cmd_teselas(cfg, args):
     """Teselas PMTiles locales de Regu Suelo en <paths.out>/tiles/: normativa | ocupacion | comunas (por defecto, las tres)."""
     import time
@@ -690,7 +716,7 @@ def cmd_importar_revision(cfg, args):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["discover", "catalogo", "download", "build", "all", "importar-revision", "ficha",
-                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints", "ocupacion", "teselas", "app", "temas"])
+                                    "mapa", "vigencia", "fuentes", "volumen", "muestra", "footprints", "ocupacion", "teselas", "app", "temas", "predios"])
     ap.add_argument("--release", help="footprints: release de Overture (por defecto, el último)")
     ap.add_argument("--conservar-crudo", action="store_true", help="footprints: no borrar el parquet crudo de Overture")
     ap.add_argument("--cut", help="muestra: CUT(s) centrales separados por coma, p.ej. 09101")
@@ -704,6 +730,7 @@ def main():
     ap.add_argument("--wkt", help="ficha: geometría WKT en EPSG:4326 (punto o polígono)")
     ap.add_argument("--gpkg", help="ficha: GPKG de build (por defecto el más reciente, preferente nacional)")
     ap.add_argument("archivo", nargs="?", help="importar-revision: CSV con 'decision' llena · fuentes: estado|validar")
+    ap.add_argument("--origen", help="predios convertir: carpeta con los GeoPackage de respaldo")
     ap.add_argument("--tema", help="temas generar: id del tema (temas/<id>.yaml)")
     ap.add_argument("--puerto", type=int, default=8000, help="app: puerto local (por defecto 8000)")
     ap.add_argument("--no-abrir", action="store_true", help="app: no abrir el navegador")
@@ -717,7 +744,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)-7s %(message)s", datefmt="%H:%M:%S")
     cfg = cargar_cfg()
-    if args.cmd in ("discover", "download", "build", "all") or args.cmd in ("ocupacion", "teselas") or (args.cmd == "footprints" and args.archivo == "descargar"):
+    if args.cmd in ("discover", "download", "build", "all") or args.cmd in ("ocupacion", "teselas", "predios") or (args.cmd == "footprints" and args.archivo == "descargar"):
         # convención: procesos largos dejan su avance en data/out/progreso.log (ver etl/progreso.py)
         progreso.iniciar(ruta(cfg, "out") / "progreso.log")
     if args.cmd in ("discover", "all"):
@@ -752,6 +779,8 @@ def main():
         cmd_app(cfg, args)
     if args.cmd == "temas":
         cmd_temas(cfg, args)
+    if args.cmd == "predios":
+        cmd_predios(cfg, args)
 
 
 if __name__ == "__main__":
