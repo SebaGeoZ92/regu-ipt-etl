@@ -54,6 +54,7 @@ Capa nacional (GeoJSON / GPKG / PostGIS) de **situación normativa del suelo**: 
   - Comandos: `python run.py fuentes estado|validar`. **`activar` no está implementado: ninguna fuente está activa.**
 - `etl/ocupacion.py`: ocupación del suelo por zona PRC con las huellas de Overture (`python run.py ocupacion`). Detalle y criterio de medición en el Backlog, sección Volúmenes.
 - `etl/vcalc.py`: V_calc por predio (huella de Overture × pisos del SII); `python run.py volumen vcalc`. Detalle en el Backlog, sección Volúmenes.
+- `etl/predios.py` y `app/predios.py`: respaldo personal de predios del SII (GeoPackage de catastral.cl anteriores a su API) convertido a GeoParquet por CUT, y `GET /api/predio` (por rol o por punto). `python run.py predios estado|convertir --origen <carpeta>`. Detalle en el Backlog, sección Predios.
 - `tests/test_sintetico.py`: escenario Temuco / Padre Las Casas / Carahue con LU duplicado, zona contenida, PRI traslapados, envolvente PRI, zonas de riesgo en PRC y PRI, COM mal escrito y afectaciones recortadas, más paginación simulada. Exige cobertura de 100% ± 0,01 y traslape < 1 m² en **cada** comuna. **Debe pasar siempre.**
 
 ## Hechos verificados del servidor MINVU (26-sep-2026)
@@ -256,6 +257,17 @@ Traspaso A1 y A2 (`40f9f6c`, `8e953b3`): `app/` (`main.py`, `ajustes.py`, `datos
 - **`altura_piso_ref_m` es un parámetro del modelo, NO una norma** (`config.yaml`, bloque `volumen`, 3,5 m, el módulo de piso que usa la ordenanza de Temuco en el Art. 16 `*5`). Una norma de zona que traiga el valor en `normas/normas_zona.csv` lo reemplaza. Cada resultado lo declara en `simplificaciones`. **Pendiente: que el arquitecto lo confirme.**
 - Reglas del cálculo (fase 1, `docs/VOLUMEN_PILOTO.md`): retranqueo uniforme `max(antejardín, distanciamiento)`; si el antejardín trae varios valores según la vía, se usa el menor porque el frente no se identifica; sin rasantes. Un predio angosto sin base edificable devuelve `sin_base` (no un 0 engañoso). Una zona sin normas devuelve solo lo existente. Sin edificios en Overture, el existente es 0 y se avisa. Los pisos sin dato (casi todos: `num_floors` es 0,56 %) se asumen 1 y se marcan cota inferior, confianza baja.
 - Cuidado: con el retranqueo uniforme de 3 a 4 m, los predios chicos (p. ej. los de 100 m² de Villa Antukuyen) quedan sin base edificable; es una limitación declarada de la fase 1.
+
+### Predios del SII, respaldo personal (7-oct-2026)
+
+43 GeoPackage (Araucanía y Los Ríos) que Seba respaldó de catastral.cl antes de su API. **Uso personal: no se versionan, no se publican y no se mezclan con la capa normativa.** Convertidos a `paths.predios` (`D:\regu-data\predios_parquet`, un parquet por CUT más `manifiesto_predios.csv`). Mapa código SII → CUT en `tablas/sii_cut_comunas.csv`.
+- **Código SII ≠ CUT.** Las carpetas y archivos usan el código de comuna del SII (9201 = Temuco, CUT 09101; 9101 = Angol, CUT 09201). Un número de 4 dígitos es ambiguo, por eso `/api/predio` tiene `cut` y `cod_sii` como parámetros distintos. El CUT se asigna **por geometría** contra la BCN (voto de puntos representativos, participación ≥ 0,9).
+- **Los nombres de archivo no son confiables:** `Puerto_Montt_10101` es Valdivia, `Calbuco_10102` es Mariquina, etc. (101xx = Los Ríos).
+- **Respaldo sucio:** todo texto, columnas corridas, errores de conexión guardados como datos. El conversor usa `dc_cod_destino` y `dc_cod_ubicacion` y calcula `area_poligono_m2` en ESRI:102033. **No guarda avalúo ni propietarios.** La dirección sí.
+- **Calidad:** 34,6 % de los polígonos son huérfanos (solo forma, `datos_sii=False`); unos 96.000 se emparejaron por cercanía (`exacto=False`, aproximados). `sup_terreno_m2` existe solo en ~57 % en Temuco. El respaldo está desactualizado (p. ej. Villa Antukuyen 2020 aparece como huérfano). La respuesta lleva `calidad` y `avisos`.
+- **Rendimiento:** orden Hilbert, `row_group_size=2000` y prefiltro por `bbox` (de 1.500 ms a ~15 ms por punto). Las 43 comunas responden por punto.
+- **Pendiente:** carpetas con parquet/csv sin integrar (Valparaíso 5xxx, Segundo y Tercer respaldo); decidir si los huérfanos se exponen en el mapa; cruce con V_calc.
+- **Seguridad:** el manual HTML y `procesar_los_rios.py` del usuario traen una cadena de conexión a una base Neon con contraseña en texto plano. No se copió ni se usó; conviene rotarla.
 
 ### Mapas temáticos de referencia (`docs/MAPAS_TEMATICOS.md`)
 

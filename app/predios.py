@@ -105,13 +105,29 @@ def por_rol(a, cut: str, rol: str) -> dict | None:
     return _respuesta(filas) if filas else None
 
 
+MARGEN_BBOX = 0.1          # grados: la línea comunal de la BCN está generalizada y algunos predios caen un poco fuera de su caja
+_BBOX_ARCHIVO: dict = {}
+
+
+def bbox_archivo(p: Path) -> tuple[float, float, float, float]:
+    """Caja real (lon/lat) de los predios de un parquet, desde sus columnas `bbox`; se calcula una vez por versión del archivo."""
+    clave = (str(p), p.stat().st_mtime)
+    if clave not in _BBOX_ARCHIVO:
+        r = _conexion().execute("select min(bbox.xmin), min(bbox.ymin), max(bbox.xmax), max(bbox.ymax) from read_parquet(?)", [str(p)]).fetchone()
+        _BBOX_ARCHIVO[clave] = tuple(float(x) for x in r)
+    return _BBOX_ARCHIVO[clave]
+
+
 def en_punto(a, lon: float, lat: float) -> dict | None:
-    """Predio que contiene el punto. Prueba las comunas cuyo bbox lo contiene y que tengan parquet."""
+    """Predio que contiene el punto. Prueba las comunas cercanas (caja BCN con margen) cuyo parquet realmente lo abarca."""
     carpeta = _carpeta(a)
-    candidatas = [c["cut"] for c in datos.comunas(a) if c["bbox"][0] <= lon <= c["bbox"][2] and c["bbox"][1] <= lat <= c["bbox"][3]
-                  and (carpeta / f"{c['cut']}.parquet").exists()]
+    m = MARGEN_BBOX
+    cercanas = [c["cut"] for c in datos.comunas(a) if c["bbox"][0] - m <= lon <= c["bbox"][2] + m and c["bbox"][1] - m <= lat <= c["bbox"][3] + m
+                and (carpeta / f"{c['cut']}.parquet").exists()]
+    candidatas = [c for c in cercanas if (b := bbox_archivo(carpeta / f"{c}.parquet"))[0] <= lon <= b[2] and b[1] <= lat <= b[3]]
     for cut in candidatas:
-        filas = _filas(a, cut, "ST_Intersects(geometry, ST_Point(?, ?))", [lon, lat])
+        filas = _filas(a, cut, "bbox.xmin <= ? AND bbox.xmax >= ? AND bbox.ymin <= ? AND bbox.ymax >= ? AND ST_Intersects(geometry, ST_Point(?, ?))",
+                       [lon, lon, lat, lat, lon, lat])      # la caja primero: con el orden espacial del parquet salta casi todos los grupos
         if filas:
             filas = sorted(filas, key=lambda f: (not f["datos_sii"], not f["exacto"], f["area_poligono_m2"] or 0))
             mejor = filas[0]

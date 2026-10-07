@@ -69,8 +69,9 @@ def _direccion(s: pd.Series) -> pd.Series:
     return t.where(~malo).astype(object)
 
 
-def limpiar(raw: gpd.GeoDataFrame, cut: str, comuna: str) -> gpd.GeoDataFrame:
-    """GeoDataFrame crudo de un respaldo (todo texto) → tabla tipada con `COLUMNAS`."""
+def limpiar(raw: gpd.GeoDataFrame, cut: str, comuna: str, cod_sii: str | None = None) -> gpd.GeoDataFrame:
+    """GeoDataFrame crudo de un respaldo (todo texto) → tabla tipada con `COLUMNAS`. `cod_sii` (el de la capa, confiable) reemplaza
+    al de las filas, que en algunas viene corrupto (p. ej. «105» en el respaldo 9103)."""
     g = raw.copy()
     rol = g["rol"].astype("string").str.strip()
     rol_ok = rol.str.fullmatch(RE_ROL).fillna(False)
@@ -83,7 +84,7 @@ def limpiar(raw: gpd.GeoDataFrame, cut: str, comuna: str) -> gpd.GeoDataFrame:
     area = gpd.GeoSeries(g.geometry.values, crs=4326).to_crs(CRS_AREA).area
     metodo = _metodo(g["_match_method"])
     out = gpd.GeoDataFrame({
-        "id": np.where(rol_ok, f"{cut}-" + rol.fillna(""), None), "cut": cut, "cod_sii": g["comuna"].astype("string").str.strip(),
+        "id": np.where(rol_ok, f"{cut}-" + rol.fillna(""), None), "cut": cut, "cod_sii": cod_sii if cod_sii else g["comuna"].astype("string").str.strip(),
         "manzana": man.where(rol_ok), "predio": pre.where(rol_ok), "rol": rol.where(rol_ok), "comuna": comuna,
         "direccion": _direccion(g["direccion_sii"]).where(datos),
         "destino_cod": cod_destino.where(datos & cod_destino.isin(DESTINOS)),
@@ -122,7 +123,7 @@ def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nomb
     raw["geometry"] = shapely.make_valid(raw.geometry.values)
     raw = raw[raw.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
     a = asignar_cut(raw, comunas_bcn, f_cut, f_nombre)
-    cod = ",".join(sorted(raw["comuna"].dropna().astype(str).unique())[:2])
+    cod = capa.split("=")[-1] if re.fullmatch(r"comuna=\d{4,5}", capa) else ",".join(sorted(raw["comuna"].dropna().astype(str).unique())[:2])
     nombres = raw["nombreComuna"].dropna().astype(str)
     nombre_datos = nombres.value_counts().index[0] if len(nombres) else ""
     fila = {"archivo": gpkg.name, "cod_sii": cod, "cut": a["cut"], "comuna_bcn": a["comuna"], "participacion_cut": a["participacion"],
@@ -130,12 +131,15 @@ def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nomb
             "n": len(raw), "n_datos_sii": 0, "n_exactos": 0, "n_huerfanos": 0, "n_ids_repetidos": 0, "mb": None, "estado": "ok"}
     if a["cut"] is None or a["participacion"] < min_participacion:
         return {**fila, "estado": f"sin CUT claro (participación {a['participacion']})"}
-    limpio = limpiar(raw, a["cut"], a["comuna"])
+    limpio = limpiar(raw, a["cut"], a["comuna"], cod if re.fullmatch(r"\d{4,5}", cod) else None)
     destino_dir = Path(destino_dir)
     destino_dir.mkdir(parents=True, exist_ok=True)
     p = destino_dir / f"{a['cut']}.parquet"
     tmp = p.with_suffix(".tmp")
-    limpio.to_parquet(tmp, compression="zstd", write_covering_bbox=True)
+    # Orden espacial (Hilbert) y grupos de 2.000 filas con la caja envolvente de cada predio (`bbox`): DuckDB salta casi todos los
+    # grupos al buscar un punto (de ≈ 1.500 ms a ≈ 15 ms en Temuco, 137.728 polígonos)
+    limpio = limpio.iloc[limpio.geometry.hilbert_distance().argsort()]
+    limpio.to_parquet(tmp, compression="zstd", write_covering_bbox=True, row_group_size=2000)
     tmp.replace(p)
     ids = limpio["id"].dropna()
     return {**fila, "n_datos_sii": int(limpio["datos_sii"].sum()), "n_exactos": int(limpio["exacto"].sum()),
@@ -143,7 +147,8 @@ def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nomb
             "mb": round(p.stat().st_size / 1e6, 1)}
 
 
-def convertir_todo(origen: Path, destino_dir: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nombre: str, progreso=None) -> pd.DataFrame:
+def convertir_todo(origen: Path, destino_dir: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nombre: str, progreso=None,
+                   min_participacion: float = 0.9) -> pd.DataFrame:
     """Convierte todos los `*.gpkg` de `origen` (recursivo). Escribe `manifiesto_predios.csv` en `destino_dir`. Si dos respaldos
     resultan en el mismo CUT, el segundo NO pisa al primero: se marca en el manifiesto."""
     archivos = sorted(Path(origen).rglob("*.gpkg"))
@@ -152,7 +157,7 @@ def convertir_todo(origen: Path, destino_dir: Path, comunas_bcn: gpd.GeoDataFram
         if progreso:
             progreso("predios", p.stem, i, len(archivos))
         try:
-            f = convertir_gpkg(p, comunas_bcn, f_cut, f_nombre, destino_dir)
+            f = convertir_gpkg(p, comunas_bcn, f_cut, f_nombre, destino_dir, min_participacion)
         except Exception as ex:   # un archivo roto no detiene el resto
             f = {"archivo": p.name, "estado": f"error: {str(ex)[:120]}"}
         if f.get("cut") in vistos and f["estado"] == "ok":

@@ -1659,9 +1659,11 @@ def _predios_sucios(origen: Path):
         fila(caja(1, 0), "01733-00023", cod_dest="W", cod_ubic="R", terreno="nan", sup0="300.5", direccion="12345", metodo="4_manzana_d3"),  # B
         fila(caja(2, 0), None, cod_dest=None, cod_ubic=None, terreno=None, sup0=None, direccion=None, metodo="orphan_polygon", ok=None),  # C: huérfano
         fila(caja(3, 0), "01734-00001", ok="False", direccion="ConnectionError(MaxRetryError('www4.sii.cl'))"),    # D: _ok falso con rol
+        {**fila(caja(0, 2), "01737-00001"), "comuna": "105"},                                                  # G: código SII corrupto en la fila
         fila(caja(0, 1), "01735-00005"),                                                                       # E1: rol repetido, exacto
         fila(caja(1, 1), "01735-00005", metodo="6_manzana_any"),                                               # E2: mismo rol, por manzana
         fila(bow, "01736-00001", cod_dest="Z"),                                                                # F: geometría inválida
+        fila(box(-72.5595, -38.7200, -72.5593, -38.7198), "01738-00001"),                                      # H: fuera de la caja BCN de la comuna (costa generalizada)
     ]
     gdf = gpd.GeoDataFrame(filas, geometry="geometry", crs=4326)
     gdf.to_file(origen / "9201_9201.gpkg", layer="comuna=9201", driver="GPKG")                                 # código SII 9201 = CUT 09101
@@ -1689,12 +1691,14 @@ def test_predios_conversion():
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
         origen = _predios_sucios(d / "Respaldo")
-        m = P.convertir_todo(origen, d / "pq", _bcn_predios(), "cod_comuna", "Comuna").set_index("archivo")
+        m = P.convertir_todo(origen, d / "pq", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8).set_index("archivo")
         t = m.loc["9201_9201.gpkg"]
-        assert t.cut == "09101" and t.comuna_bcn == "Temuco" and t.cod_sii == "9201" and t.participacion_cut == 1.0 and t.coincide_nombre, "el CUT sale de la geometría"
-        assert t.n == 7 and t.n_datos_sii == 5 and t.n_huerfanos == 1 and t.n_exactos == 4 and t.n_ids_repetidos == 1 and t.estado == "ok", t.to_dict()
+        assert t.cut == "09101" and t.comuna_bcn == "Temuco" and t.cod_sii == "9201" and t.participacion_cut == 0.889 and t.coincide_nombre, "el CUT sale de la geometría"
+        assert t.n == 9 and t.n_datos_sii == 7 and t.n_huerfanos == 1 and t.n_exactos == 6 and t.n_ids_repetidos == 1 and t.estado == "ok", t.to_dict()
         v = m.loc["Puerto_Montt_10101.gpkg"]
         assert v.cut == "09112" and v.cod_sii == "10101" and not v.coincide_nombre and v.nombre_en_datos == "VALDIVIA", "nombre engañoso: manda la geometría"
+        m2 = P.convertir_todo(origen, d / "pq2", _bcn_predios(), "cod_comuna", "Comuna").set_index("archivo")
+        assert m2.loc["9201_9201.gpkg", "estado"].startswith("sin CUT claro") and not (d / "pq2" / "09101.parquet").exists(), "bajo el umbral de participación (0,9) no se asigna CUT"
         assert m.loc["Lejos_9999.gpkg", "estado"].startswith("sin CUT claro") and not (d / "pq" / "9999.parquet").exists()
         assert (d / "pq" / "09101.parquet").exists() and (d / "pq" / "manifiesto_predios.csv").exists()
         g = gpd.read_parquet(d / "pq" / "09101.parquet").set_index("rol", drop=False)
@@ -1714,6 +1718,7 @@ def test_predios_conversion():
         assert pd.isna(h.id) and pd.isna(h.rol) and not h.datos_sii and pd.isna(h.destino) and h.area_poligono_m2 > 0
         assert len(g.loc[["01735-00005"]]) == 2 and g.loc["01736-00001"].geometry.is_valid, "la geometría inválida se repara"
         assert g.loc["01736-00001"].destino == "ESTACIONAMIENTO"
+        assert (g["cod_sii"] == "9201").all() and g.loc["01737-00001"].cod_sii == "9201", "el código SII es el de la capa, no el de la fila"
         assert g.crs.to_epsg() == 4326
     print("  predios conversión: OK")
 
@@ -1731,7 +1736,7 @@ def test_app_predios():
         r = c.get("/api/predio", params={"cut": "09101", "rol": "1733-22"})
         assert r.status_code == 503 and "predios convertir" in r.json()["detail"], "sin predios convertidos: mensaje claro"
         a.dir_predios = d / "pq"
-        P.convertir_todo(_predios_sucios(d / "Respaldo"), a.dir_predios, _bcn_predios(), "cod_comuna", "Comuna")
+        P.convertir_todo(_predios_sucios(d / "Respaldo"), a.dir_predios, _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8)
         # por rol, con la comuna dada de tres maneras (la ficha cae en ZH2 de la maqueta)
         r1 = c.get("/api/predio", params={"cut": "09101", "rol": "1733-22"}).json()
         r2 = c.get("/api/predio", params={"cod_sii": "9201", "rol": "01733-00022"}).json()
@@ -1759,7 +1764,7 @@ def test_app_predios():
         assert pt["predio"]["id"] == "09101-01733-00022" and pt["ficha"]["particion"][0]["zona"] == "ZH2"
         huer = c.get("/api/predio", params={"lon": -72.5950 + 2.5 * 0.00023, "lat": lat, "ficha": "false"}).json()
         assert huer["predio"]["id"] is None and huer["calidad"]["geometria"] == "sin_datos" and huer["predio"]["area_poligono_m2"] > 0
-        assert c.get("/api/predio", params={"lon": -72.5950, "lat": -38.7330}).status_code == 404
+        fuera = c.get("/api/predio", params={"lon": -72.5594, "lat": -38.7199, "ficha": "false"}).json()
         assert c.get("/api/predio", params={"lon": -70.0, "lat": -33.0}).status_code == 404
         # errores
         assert c.get("/api/predio", params={"cut": "09101", "rol": "9999-1"}).status_code == 404
