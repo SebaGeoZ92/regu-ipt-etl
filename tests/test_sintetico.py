@@ -1723,6 +1723,46 @@ def test_predios_conversion():
     print("  predios conversión: OK")
 
 
+def test_predios_parquet():
+    """Respaldos en GeoParquet (segundo proceso de emparejamiento): otro vocabulario de métodos, filas sin polígono, y se SUMAN a lo
+    ya convertido sin pisarlo."""
+    import pandas as pd
+    from etl import predios as P
+    lon0, lat0, dx, dy = -72.5950, -38.7350, 0.00023, 0.00027
+    cols = {"_ok": "True", "comuna": "5301", "manzana": "00001", "predio": "00001", "nombreComuna": "TEMUCO", "direccion_sii": "ALTO 10",
+            "dc_cod_destino": "H", "dc_cod_ubicacion": "U", "dc_sup_terreno": "200", "supTerreno": "0", "sup_construida_total": "60",
+            "pisos_max": "1", "anio_construccion_min": "2001", "anio_construccion_max": "2001", "periodo": "PRIMER SEMESTRE DE 2026"}
+
+    def fila(i, rol, metodo, geom=True):
+        return {**cols, "rol": rol, "_match_method": metodo, "geometry": box(lon0 + i * dx, lat0, lon0 + (i + 1) * dx, lat0 + dy) if geom else None}
+    filas = [fila(0, "00001-00001", "point_in_polygon"), fila(1, "00001-00002", "nearest_10m"), fila(2, "00001-00003", "ah_utm_pip"),
+             fila(3, "00001-00004", "address_inheritance"), fila(4, "", "unmatched_polygon"), fila(5, "00001-00006", "", geom=False)]
+    filas[4].update(_ok=None, dc_cod_destino=None, direccion_sii=None)
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        origen = _predios_sucios(d / "Respaldo")
+        P.convertir_todo(origen, d / "pq", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8)      # el respaldo en gpkg
+        (d / "Valpo").mkdir()
+        gpd.GeoDataFrame(filas, geometry="geometry", crs=4326).to_parquet(d / "Valpo" / "Cualquiera_9777.parquet")
+        gpd.GeoDataFrame(filas[:1], geometry="geometry", crs=4326).to_parquet(d / "Valpo" / "Otro_9778.parquet")   # mismo CUT que el anterior
+        m = P.convertir_todo(d / "Valpo", d / "pq", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8, patron="*.parquet").set_index("archivo")
+        assert {"9201_9201.gpkg", "Cualquiera_9777.parquet"} <= set(m.index), "suma al manifiesto, no lo reemplaza"
+        assert m.loc["9201_9201.gpkg", "estado"] == "ok" and m.loc["9201_9201.gpkg", "n"] == 9, "lo anterior queda intacto"
+        v = m.loc["Cualquiera_9777.parquet"]
+        assert str(v.cut).zfill(5) == "09101" or v.estado.startswith("CUT 09101 ya cubierto"), v.to_dict()
+        assert m.loc["Otro_9778.parquet", "estado"].startswith("CUT 09101 ya cubierto por 9201_9201.gpkg"), "no pisa lo ya convertido"
+        g = gpd.read_parquet(d / "pq" / "09101.parquet")
+        assert len(g) == 9 and set(g.cod_sii) == {"9201"}, "el parquet del respaldo anterior sigue igual"
+        # el mismo archivo en un destino limpio: vocabulario y filas sin polígono
+        P.convertir_todo(d / "Valpo", d / "pq2", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8, patron="Cualquiera*.parquet")
+        g2 = gpd.read_parquet(d / "pq2" / "09101.parquet").set_index("metodo", drop=False)
+        assert sorted(g2.metodo) == ["cercano", "contiene", "herencia_direccion", "huerfano", "utm"], sorted(g2.metodo)
+        assert g2.loc["contiene", "exacto"] and not g2.loc["utm", "exacto"] and not g2.loc["huerfano", "datos_sii"], "solo «contiene» es exacto"
+        m2 = pd.read_csv(d / "pq2" / "manifiesto_predios.csv", encoding="utf-8-sig", dtype={"cut": str})
+        assert int(m2.n_sin_poligono.iloc[0]) == 1 and int(m2.n.iloc[0]) == 5 and m2.cod_sii.astype(str).iloc[0] == "9777", m2.to_dict("records")
+    print("  predios parquet: OK")
+
+
 def test_app_predios():
     """/api/predio: por rol (cut, código SII o nombre) y por punto, con ficha; huérfanos, errores y sin romper lo demás."""
     from fastapi.testclient import TestClient
@@ -1867,6 +1907,7 @@ if __name__ == "__main__":
     test_app_lamina()
     test_temas_catalogo()
     test_predios_conversion()
+    test_predios_parquet()
     test_app_predios()
     test_raster_tiles()
     test_temas_generadores_comunes()

@@ -512,7 +512,8 @@ def cmd_predios(cfg, args):
             sys.exit("Uso: python run.py predios convertir --origen <carpeta con los GeoPackage>")
         c = cfg["comunas"]
         bcn = gpd.read_file(ruta(cfg, "comunas")).to_crs(4326)
-        m = P.convertir_todo(Path(args.origen), destino, bcn, c["field_cut"], c["field_nombre"], progreso.paso)
+        patron = "*.parquet" if getattr(args, "formato", None) == "parquet" else "*.gpkg"
+        m = P.convertir_todo(Path(args.origen), destino, bcn, c["field_cut"], c["field_nombre"], progreso.paso, patron=patron)
         print(m.drop(columns=["nombre_en_datos"], errors="ignore").to_string(index=False))
         print(f"\nManifiesto: {destino / 'manifiesto_predios.csv'} · {int(m.n.sum()):,} polígonos")
         return
@@ -731,6 +732,7 @@ def main():
     ap.add_argument("--gpkg", help="ficha: GPKG de build (por defecto el más reciente, preferente nacional)")
     ap.add_argument("archivo", nargs="?", help="importar-revision: CSV con 'decision' llena · fuentes: estado|validar")
     ap.add_argument("--origen", help="predios convertir: carpeta con los GeoPackage de respaldo")
+    ap.add_argument("--formato", choices=["gpkg", "parquet"], default="gpkg", help="predios convertir: formato de los respaldos (por defecto gpkg)")
     ap.add_argument("--tema", help="temas generar: id del tema (temas/<id>.yaml)")
     ap.add_argument("--puerto", type=int, default=8000, help="app: puerto local (por defecto 8000)")
     ap.add_argument("--no-abrir", action="store_true", help="app: no abrir el navegador")

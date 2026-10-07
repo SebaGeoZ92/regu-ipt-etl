@@ -37,7 +37,10 @@ DESTINOS = {"A": "AGRICOLA", "B": "AGRICOLA POR ASIMILACION", "C": "COMERCIO", "
             "W": "SITIO ERIAZO", "Z": "ESTACIONAMIENTO"}
 UBICACIONES = {"U": "URBANA", "R": "RURAL", "E": "EXTENSION URBANA"}
 METODOS = (("1_contains", "contiene"), ("2_nearest", "cercano"), ("4_manzana", "manzana"), ("6_manzana_any", "manzana_cualquiera"),
-           ("orphan_polygon", "huerfano"))
+           ("orphan_polygon", "huerfano"),
+           # vocabulario del segundo proceso de emparejamiento (parquet de Valparaíso, Segundo y Tercer respaldo)
+           ("point_in_polygon", "contiene"), ("nearest", "cercano"), ("unmatched_polygon", "huerfano"),
+           ("address_inheritance", "herencia_direccion"), ("ah_utm", "utm"), ("csa_utm", "utm"))
 LEER = ["_ok", "comuna", "manzana", "predio", "rol", "nombreComuna", "direccion_sii", "dc_cod_destino", "dc_cod_ubicacion", "dc_sup_terreno",
         "supTerreno", "sup_construida_total", "pisos_max", "anio_construccion_min", "anio_construccion_max", "_match_method"]
 COLUMNAS = ["id", "cut", "cod_sii", "manzana", "predio", "rol", "comuna", "direccion", "destino_cod", "destino", "ubicacion", "sup_terreno_m2",
@@ -113,24 +116,42 @@ def asignar_cut(raw: gpd.GeoDataFrame, comunas_bcn: gpd.GeoDataFrame, f_cut: str
     return {"cut": cut, "comuna": nombre, "participacion": round(float(votos.iloc[0]) / len(j), 3)}
 
 
-def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nombre: str, destino_dir: Path, min_participacion: float = 0.9) -> dict:
-    """Convierte un respaldo a `<destino_dir>/<cut>.parquet` y devuelve su fila de manifiesto (con las cifras de calidad)."""
+def _leer(archivo: Path) -> tuple[gpd.GeoDataFrame, str]:
+    """Respaldo crudo (GeoPackage o GeoParquet) → (GeoDataFrame con las columnas de `LEER`, código SII según el archivo)."""
+    if archivo.suffix.lower() == ".parquet":
+        import pyarrow.parquet as pq
+        campos = pq.ParquetFile(archivo).schema_arrow.names
+        raw = gpd.read_parquet(archivo, columns=[c for c in LEER if c in campos] + ["geometry"])
+        m = re.search(r"_(\d{4,5})$", archivo.stem)      # los nombres de archivo traen el código SII al final
+        return raw, m.group(1) if m else ""
+    capa = pyogrio.list_layers(archivo)[0][0]
+    campos = pyogrio.read_info(archivo, layer=capa)["fields"]
+    raw = pyogrio.read_dataframe(archivo, layer=capa, columns=[c for c in LEER if c in campos])
+    return raw, capa.split("=")[-1] if re.fullmatch(r"comuna=\d{4,5}", capa) else ""
+
+
+def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nombre: str, destino_dir: Path, min_participacion: float = 0.9,
+                   protegidos: dict | None = None) -> dict:
+    """Convierte un respaldo (`.gpkg` o `.parquet`) a `<destino_dir>/<cut>.parquet` y devuelve su fila de manifiesto (con las cifras de
+    calidad). `protegidos` es {cut: archivo} de lo ya convertido desde otro respaldo: no se sobrescribe."""
     gpkg = Path(gpkg)
-    capa = pyogrio.list_layers(gpkg)[0][0]
-    campos = pyogrio.read_info(gpkg, layer=capa)["fields"]
-    raw = pyogrio.read_dataframe(gpkg, layer=capa, columns=[c for c in LEER if c in campos])
+    raw, cod_archivo = _leer(gpkg)
+    n_sin_geom = int((raw.geometry.isna() | raw.geometry.is_empty).sum())      # filas con datos del SII pero sin polígono
     raw = raw[raw.geometry.notna() & ~raw.geometry.is_empty].copy()
     raw["geometry"] = shapely.make_valid(raw.geometry.values)
     raw = raw[raw.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
     a = asignar_cut(raw, comunas_bcn, f_cut, f_nombre)
-    cod = capa.split("=")[-1] if re.fullmatch(r"comuna=\d{4,5}", capa) else ",".join(sorted(raw["comuna"].dropna().astype(str).unique())[:2])
+    cod = cod_archivo or ",".join(sorted(raw["comuna"].dropna().astype(str).unique())[:2])
     nombres = raw["nombreComuna"].dropna().astype(str)
     nombre_datos = nombres.value_counts().index[0] if len(nombres) else ""
     fila = {"archivo": gpkg.name, "cod_sii": cod, "cut": a["cut"], "comuna_bcn": a["comuna"], "participacion_cut": a["participacion"],
             "nombre_en_datos": nombre_datos[:40], "coincide_nombre": bool(a["comuna"] and norm_txt(a["comuna"]) == norm_txt(nombre_datos)),
-            "n": len(raw), "n_datos_sii": 0, "n_exactos": 0, "n_huerfanos": 0, "n_ids_repetidos": 0, "mb": None, "estado": "ok"}
+            "n": len(raw), "n_sin_poligono": n_sin_geom, "n_datos_sii": 0, "n_exactos": 0, "n_huerfanos": 0, "n_ids_repetidos": 0, "mb": None,
+            "estado": "ok"}
     if a["cut"] is None or a["participacion"] < min_participacion:
         return {**fila, "estado": f"sin CUT claro (participación {a['participacion']})"}
+    if protegidos and protegidos.get(a["cut"], gpkg.name) != gpkg.name:
+        return {**fila, "estado": f"CUT {a['cut']} ya cubierto por {protegidos[a['cut']]}: no se sobrescribe"}
     limpio = limpiar(raw, a["cut"], a["comuna"], cod if re.fullmatch(r"\d{4,5}", cod) else None)
     destino_dir = Path(destino_dir)
     destino_dir.mkdir(parents=True, exist_ok=True)
@@ -148,24 +169,31 @@ def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nomb
 
 
 def convertir_todo(origen: Path, destino_dir: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nombre: str, progreso=None,
-                   min_participacion: float = 0.9) -> pd.DataFrame:
-    """Convierte todos los `*.gpkg` de `origen` (recursivo). Escribe `manifiesto_predios.csv` en `destino_dir`. Si dos respaldos
-    resultan en el mismo CUT, el segundo NO pisa al primero: se marca en el manifiesto."""
-    archivos = sorted(Path(origen).rglob("*.gpkg"))
+                   min_participacion: float = 0.9, patron: str = "*.gpkg") -> pd.DataFrame:
+    """Convierte todos los archivos de `origen` que calcen con `patron` (recursivo; `*.gpkg` o `*.parquet`). Escribe
+    `manifiesto_predios.csv` en `destino_dir` **sumando** a lo ya convertido: las filas de otros archivos se conservan y un CUT ya
+    cubierto por otro archivo no se sobrescribe (se marca en el manifiesto). Dentro de una misma corrida, un CUT repetido sí pisa."""
+    destino_dir = Path(destino_dir)
+    destino_dir.mkdir(parents=True, exist_ok=True)
+    mf = destino_dir / "manifiesto_predios.csv"
+    previo = pd.read_csv(mf, encoding="utf-8-sig", dtype=str, keep_default_na=False) if mf.exists() else pd.DataFrame()
+    archivos = sorted(Path(origen).rglob(patron))
+    nuevos = {p.name for p in archivos}
+    protegidos = {r["cut"]: r["archivo"] for _, r in previo.iterrows() if r.get("estado") == "ok" and r.get("cut") and r["archivo"] not in nuevos}
     filas, vistos = [], {}
     for i, p in enumerate(archivos, 1):
         if progreso:
             progreso("predios", p.stem, i, len(archivos))
         try:
-            f = convertir_gpkg(p, comunas_bcn, f_cut, f_nombre, destino_dir, min_participacion)
+            f = convertir_gpkg(p, comunas_bcn, f_cut, f_nombre, destino_dir, min_participacion, protegidos)
         except Exception as ex:   # un archivo roto no detiene el resto
             f = {"archivo": p.name, "estado": f"error: {str(ex)[:120]}"}
         if f.get("cut") in vistos and f["estado"] == "ok":
             f["estado"] = f"CUT repetido con {vistos[f['cut']]}: sobrescribió su parquet"
-        if f.get("cut") and f["estado"] != "sin CUT claro":
+        if f.get("cut") and f["estado"] == "ok":
             vistos[f["cut"]] = p.name
         filas.append(f)
     m = pd.DataFrame(filas)
-    Path(destino_dir).mkdir(parents=True, exist_ok=True)
-    m.to_csv(Path(destino_dir) / "manifiesto_predios.csv", index=False, encoding="utf-8-sig")
-    return m
+    total = pd.concat([previo[~previo["archivo"].isin(nuevos)] if len(previo) else previo, m], ignore_index=True)
+    total.to_csv(mf, index=False, encoding="utf-8-sig")
+    return pd.read_csv(mf, encoding="utf-8-sig", dtype={"cut": str, "cod_sii": str})      # con los tipos numéricos de vuelta
