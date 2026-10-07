@@ -1655,7 +1655,7 @@ def _predios_sucios(origen: Path):
                 "geometry": geom, **extra}
     bow = Polygon([(lon0 + 6 * dx, lat0), (lon0 + 7 * dx, lat0 + dy), (lon0 + 7 * dx, lat0), (lon0 + 6 * dx, lat0 + dy)])   # corbata: inválida
     filas = [
-        fila(caja(0, 0), "01733-00022"),                                                                       # A: limpio (texto corrido)
+        fila(caja(0, 0), "01733-00022", periodo="PRIMER SEMESTRE DE 2026"),                                    # A: limpio (texto corrido)
         fila(caja(1, 0), "01733-00023", cod_dest="W", cod_ubic="R", terreno="nan", sup0="300.5", direccion="12345", metodo="4_manzana_d3"),  # B
         fila(caja(2, 0), None, cod_dest=None, cod_ubic=None, terreno=None, sup0=None, direccion=None, metodo="orphan_polygon", ok=None),  # C: huérfano
         fila(caja(3, 0), "01734-00001", ok="False", direccion="ConnectionError(MaxRetryError('www4.sii.cl'))"),    # D: _ok falso con rol
@@ -1709,6 +1709,9 @@ def test_predios_conversion():
         assert a.destino == "HABITACIONAL" and a.destino_cod == "H" and a.ubicacion == "URBANA", "salen de los códigos, no del texto corrido"
         assert a.sup_terreno_m2 == 250.0 and a.sup_construida_m2 == 80 and a.pisos_max == 2 and a.anio_construccion == 1990
         assert a.direccion == "YELCHO 01670" and a.metodo == "contiene" and a.exacto and a.datos_sii and 500 < a.area_poligono_m2 < 800
+        assert a.periodo_sii == "2026-1" and pd.isna(g.loc["01733-00023"].periodo_sii), "periodo legible → «2026-1»; el corrido («327») → nulo"
+        assert t.periodo == "2026-1" and 0 < t.pct_periodo < 1, "el manifiesto trae el semestre más frecuente de la comuna"
+        assert [P.normalizar_periodo(x) for x in ("SEGUNDO SEMESTRE DE 2025", " primer semestre de 2026 ", "327", None, "PRIMER SEMESTRE DE 1999")] == ["2025-2", "2026-1", None, None, None]
         b = g.loc["01733-00023"]
         assert b.destino == "SITIO ERIAZO" and b.ubicacion == "RURAL" and b.sup_terreno_m2 == 300.5, "terreno: usa supTerreno si dc_sup_terreno falta"
         assert pd.isna(b.direccion) and b.metodo == "manzana" and not b.exacto and b.datos_sii, "dirección numérica = columna corrida → nula"
@@ -1790,8 +1793,23 @@ def test_app_predios():
         texto = json.dumps(r1).lower()
         assert "valortotal" not in texto and "avaluo" not in texto and "12345678" not in texto and "propiet" not in texto, "sin avalúo ni propietarios"
         assert "ficha" not in c.get("/api/predio", params={"cut": "09101", "rol": "1733-22", "ficha": "false"}).json()
+        fd = r1["fecha_dato"]      # el semestre en curso depende del día: se valida el cálculo con fechas fijas más abajo
+        assert fd["periodo_sii"] == "2026-1" and fd["periodo_respaldo_comuna"] == "2026-1" and fd["estado"] in ("al_dia", "atrasado") and fd["aviso"]
+        from datetime import date
+        from app import predios as AP
+        f1 = AP.fecha_dato("2026-1", "2026-1", date(2026, 10, 7))
+        assert f1["estado"] == "atrasado" and f1["atraso_semestres"] == 1 and f1["semestre_actual"] == "2026-2" and "1 semestre de diferencia" in f1["aviso"]
+        assert AP.fecha_dato("2026-1", "2026-1", date(2026, 3, 1))["estado"] == "al_dia"
+        assert AP.fecha_dato("2024-2", None, date(2026, 10, 7))["atraso_semestres"] == 4 and "4 semestres" in AP.fecha_dato("2024-2", None, date(2026, 10, 7))["aviso"]
+        f3 = AP.fecha_dato(None, "2026-1", date(2026, 10, 7))     # huérfano: sin fecha propia (caso Villa Antukuyen), solo la del respaldo
+        assert f3["estado"] == "sin_dato" and f3["periodo_sii"] is None and "no tiene fecha propia" in f3["aviso"] and "primer semestre de 2026" in f3["aviso"]
+        assert AP.fecha_dato(None, None, date(2026, 10, 7))["atraso_semestres"] is None
+        f4 = AP.fecha_dato(None, "2026-1", date(2026, 10, 7), con_datos=True)      # con datos pero periodo corrido: se infiere el de la comuna
+        assert f4["periodo_inferido"] and f4["periodo_sii"] == "2026-1" and f4["estado"] == "atrasado" and "se usa el de la comuna" in f4["aviso"]
+        assert not f1["periodo_inferido"] and not f3["periodo_inferido"]
         # calidad aproximada, varios polígonos (se unen) y huérfano
         ap = c.get("/api/predio", params={"cut": "09101", "rol": "1733-23"}).json()
+        assert ap["fecha_dato"]["periodo_inferido"] and ap["fecha_dato"]["periodo_sii"] == "2026-1", "periodo corrido (B): se infiere el de la comuna"
         assert ap["calidad"]["geometria"] == "aproximada" and any("cercanía" in x for x in ap["calidad"]["avisos"])
         rep = c.get("/api/predio", params={"cut": "09101", "rol": "1735-5", "ficha": "false"}).json()
         assert rep["n_poligonos"] == 2 and rep["calidad"]["geometria"] == "exacta" and rep["geometria"]["type"] in ("Polygon", "MultiPolygon")
@@ -1804,6 +1822,7 @@ def test_app_predios():
         assert pt["predio"]["id"] == "09101-01733-00022" and pt["ficha"]["particion"][0]["zona"] == "ZH2"
         huer = c.get("/api/predio", params={"lon": -72.5950 + 2.5 * 0.00023, "lat": lat, "ficha": "false"}).json()
         assert huer["predio"]["id"] is None and huer["calidad"]["geometria"] == "sin_datos" and huer["predio"]["area_poligono_m2"] > 0
+        assert huer["fecha_dato"]["estado"] == "sin_dato" and huer["fecha_dato"]["periodo_sii"] is None and huer["fecha_dato"]["periodo_respaldo_comuna"] == "2026-1"
         fuera = c.get("/api/predio", params={"lon": -72.5594, "lat": -38.7199, "ficha": "false"}).json()
         assert c.get("/api/predio", params={"lon": -70.0, "lat": -33.0}).status_code == 404
         # errores

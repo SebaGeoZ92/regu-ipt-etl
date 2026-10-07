@@ -6,6 +6,8 @@ guarda). Si el rol tiene varios polígonos se unen; entre varios polígonos de u
 from __future__ import annotations
 
 import json
+import re
+from datetime import date
 from pathlib import Path
 
 import pandas as pd
@@ -19,7 +21,7 @@ from . import datos
 from .edificios import _conexion
 
 CAMPOS = ["id", "cut", "cod_sii", "manzana", "predio", "rol", "comuna", "direccion", "destino_cod", "destino", "ubicacion", "sup_terreno_m2",
-          "sup_construida_m2", "pisos_max", "anio_construccion", "area_poligono_m2", "metodo", "exacto", "datos_sii"]
+          "sup_construida_m2", "pisos_max", "anio_construccion", "periodo_sii", "area_poligono_m2", "metodo", "exacto", "datos_sii"]
 FUENTE = {"nombre": "SII, catastro de bienes raíces, a través de catastral.cl", "tipo": "respaldo personal anterior a la API de catastral.cl",
           "uso": "personal; no se publica ni se versiona"}
 _MANIFIESTO: dict = {}
@@ -76,7 +78,52 @@ def _json(v):
     return v.item() if hasattr(v, "item") else v
 
 
-def _respuesta(filas: list[dict]) -> dict:
+def _indice_semestre(periodo: str | None) -> int | None:
+    """«2026-1» → 4052 (año × 2 + semestre − 1): permite restar semestres."""
+    m = re.fullmatch(r"(20\d{2})-([12])", periodo or "")
+    return int(m.group(1)) * 2 + int(m.group(2)) - 1 if m else None
+
+
+def _texto_periodo(periodo: str) -> str:
+    return f"{'primer' if periodo.endswith('1') else 'segundo'} semestre de {periodo[:4]}"
+
+
+def fecha_dato(periodo_sii: str | None, periodo_comuna: str | None, hoy: date | None = None, con_datos: bool = False) -> dict:
+    """Fecha (semestre del avalúo del SII) del dato de un predio y cuánto se atrasa frente al semestre en curso.
+    Con datos pero sin periodo legible (columna corrida en el respaldo) se usa el de la comuna y se marca `periodo_inferido`: en todas
+    las comunas respaldadas el único periodo legible es el mismo. Sin datos propios del SII (polígono huérfano) se informa el semestre
+    del respaldo de la comuna, que es solo una cota: un predio creado después (subdivisión, loteo nuevo) no aparece o figura sin datos."""
+    hoy = hoy or date.today()
+    actual = f"{hoy.year}-{1 if hoy.month <= 6 else 2}"
+    inferido = bool(con_datos and not periodo_sii and periodo_comuna)
+    if inferido:
+        periodo_sii = periodo_comuna
+    base = periodo_sii or periodo_comuna
+    atraso = (_indice_semestre(actual) - _indice_semestre(base)) if _indice_semestre(base) is not None else None
+    if not periodo_sii:
+        aviso = ("Sin datos del SII para este polígono: no tiene fecha propia, y un predio creado después del respaldo no aparece o figura sin datos."
+                 + (f" El respaldo de la comuna es del {_texto_periodo(periodo_comuna)}." if periodo_comuna else ""))
+        estado = "sin_dato"
+    elif atraso and atraso > 0:
+        aviso = f"Dato del {_texto_periodo(periodo_sii)}: {atraso} semestre{'s' if atraso > 1 else ''} de diferencia con el semestre en curso ({_texto_periodo(actual)})."
+        estado = "atrasado"
+    else:
+        aviso, estado = f"Dato del {_texto_periodo(periodo_sii)}, el semestre en curso.", "al_dia"
+    if inferido:
+        aviso += " El periodo del predio no se lee en el respaldo; se usa el de la comuna."
+    return {"periodo_sii": periodo_sii, "periodo_inferido": inferido, "periodo_respaldo_comuna": periodo_comuna, "semestre_actual": actual,
+            "atraso_semestres": atraso, "estado": estado, "aviso": aviso}
+
+
+def _periodo_comuna(a, cut: str) -> str | None:
+    m = manifiesto(a)
+    if "periodo" not in m.columns or not len(m):
+        return None
+    f = m[(m["cut"] == cut) & ((m["estado"] == "ok") if "estado" in m.columns else True)]
+    return (f["periodo"].iloc[0] or None) if len(f) else None
+
+
+def _respuesta(filas: list[dict], periodo_comuna: str | None = None) -> dict:
     """Une las filas de un mismo predio en una respuesta con calidad y avisos (sin avalúo ni propietarios)."""
     filas = sorted(filas, key=lambda f: (not f["datos_sii"], not f["exacto"], f["area_poligono_m2"] or 0))
     f = filas[0]
@@ -89,9 +136,12 @@ def _respuesta(filas: list[dict]) -> dict:
                       "el polígono puede no ser el del predio.")
     if len(filas) > 1:
         avisos.append(f"El rol tiene {len(filas)} polígonos en el respaldo; se unieron.")
+    fecha = fecha_dato(_json(f["periodo_sii"]) if f["datos_sii"] else None, periodo_comuna, con_datos=bool(f["datos_sii"]))
+    if fecha["estado"] != "sin_dato":      # para los huérfanos el aviso sobre la falta de datos ya está arriba
+        avisos.append(fecha["aviso"])
     avisos.append("Respaldo de catastral.cl anterior a su API: puede estar desactualizado frente al SII.")
     predio = {k: _json(f[k]) for k in CAMPOS if k not in ("exacto", "datos_sii", "metodo")}
-    return {"predio": predio, "geometria": mapping(geom), "n_poligonos": len(filas),
+    return {"predio": predio, "geometria": mapping(geom), "n_poligonos": len(filas), "fecha_dato": fecha,
             "calidad": {"datos_sii": bool(f["datos_sii"]), "metodo": f["metodo"], "geometria": "sin_datos" if not f["datos_sii"] else
                         ("exacta" if f["exacto"] else "aproximada"), "avisos": avisos},
             "fuente": FUENTE}
@@ -102,7 +152,7 @@ def por_rol(a, cut: str, rol: str) -> dict | None:
     if n is None:
         raise ValueError(f"Rol inválido: «{rol}». Formato manzana-predio, p. ej. 1733-22 o 01733-00022")
     filas = _filas(a, cut, "rol = ?", [n])
-    return _respuesta(filas) if filas else None
+    return _respuesta(filas, _periodo_comuna(a, cut)) if filas else None
 
 
 MARGEN_BBOX = 0.1          # grados: la línea comunal de la BCN está generalizada y algunos predios caen un poco fuera de su caja
@@ -132,6 +182,6 @@ def en_punto(a, lon: float, lat: float) -> dict | None:
             filas = sorted(filas, key=lambda f: (not f["datos_sii"], not f["exacto"], f["area_poligono_m2"] or 0))
             mejor = filas[0]
             if mejor["id"]:      # el predio completo (puede tener varios polígonos con el mismo rol)
-                return _respuesta(_filas(a, cut, "id = ?", [mejor["id"]]))
-            return _respuesta([mejor])
+                return _respuesta(_filas(a, cut, "id = ?", [mejor["id"]]), _periodo_comuna(a, cut))
+            return _respuesta([mejor], _periodo_comuna(a, cut))
     return None

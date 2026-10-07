@@ -42,9 +42,16 @@ METODOS = (("1_contains", "contiene"), ("2_nearest", "cercano"), ("4_manzana", "
            ("point_in_polygon", "contiene"), ("nearest", "cercano"), ("unmatched_polygon", "huerfano"),
            ("address_inheritance", "herencia_direccion"), ("ah_utm", "utm"), ("csa_utm", "utm"))
 LEER = ["_ok", "comuna", "manzana", "predio", "rol", "nombreComuna", "direccion_sii", "dc_cod_destino", "dc_cod_ubicacion", "dc_sup_terreno",
-        "supTerreno", "sup_construida_total", "pisos_max", "anio_construccion_min", "anio_construccion_max", "_match_method"]
+        "supTerreno", "sup_construida_total", "pisos_max", "anio_construccion_min", "anio_construccion_max", "_match_method", "periodo"]
 COLUMNAS = ["id", "cut", "cod_sii", "manzana", "predio", "rol", "comuna", "direccion", "destino_cod", "destino", "ubicacion", "sup_terreno_m2",
-            "sup_construida_m2", "pisos_max", "anio_construccion", "area_poligono_m2", "metodo", "exacto", "datos_sii", "geometry"]
+            "sup_construida_m2", "pisos_max", "anio_construccion", "periodo_sii", "area_poligono_m2", "metodo", "exacto", "datos_sii", "geometry"]
+RE_PERIODO = re.compile(r"^\s*(PRIMER|SEGUNDO)\s+SEMESTRE\s+DE\s+(20\d{2})\s*$", re.IGNORECASE)
+
+
+def normalizar_periodo(valor) -> str | None:
+    """Semestre del avalúo del SII → «2026-1» o «2026-2»; None si el texto no es un periodo (columna corrida, número suelto, nulo)."""
+    m = RE_PERIODO.match(str(valor)) if valor is not None else None
+    return f"{m.group(2)}-{1 if m.group(1).upper() == 'PRIMER' else 2}" if m else None
 
 
 def normalizar_rol(valor: str) -> str | None:
@@ -94,11 +101,12 @@ def limpiar(raw: gpd.GeoDataFrame, cut: str, comuna: str, cod_sii: str | None = 
         "ubicacion": cod_ubic.map(UBICACIONES).where(datos),
         "sup_terreno_m2": terreno.where(datos).round(1), "sup_construida_m2": _num(g["sup_construida_total"]).where(datos),
         "pisos_max": _num(g["pisos_max"]).where(datos), "anio_construccion": anio.where(datos),
+        "periodo_sii": (g["periodo"].map(normalizar_periodo) if "periodo" in g else pd.Series(None, index=g.index, dtype=object)).where(datos),
         "area_poligono_m2": area.round(1).to_numpy(), "metodo": metodo, "exacto": metodo == "contiene", "datos_sii": datos,
     }, geometry=g.geometry.values, crs=4326)
     out["destino"] = out["destino_cod"].map(DESTINOS)
     out["destino_cod"] = out["destino_cod"].astype(object)
-    for c in ("cod_sii", "manzana", "predio", "rol", "direccion", "ubicacion", "destino"):
+    for c in ("cod_sii", "manzana", "predio", "rol", "direccion", "ubicacion", "destino", "periodo_sii"):
         out[c] = out[c].astype(object).where(out[c].notna(), None)
     return out[COLUMNAS]
 
@@ -163,6 +171,9 @@ def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nomb
     limpio.to_parquet(tmp, compression="zstd", write_covering_bbox=True, row_group_size=2000)
     tmp.replace(p)
     ids = limpio["id"].dropna()
+    per = limpio["periodo_sii"].dropna()
+    fila["periodo"] = per.value_counts().index[0] if len(per) else ""          # semestre más frecuente del respaldo de la comuna
+    fila["pct_periodo"] = round(float(len(per)) / max(1, int(limpio["datos_sii"].sum())), 3)   # fracción de predios con periodo legible
     return {**fila, "n_datos_sii": int(limpio["datos_sii"].sum()), "n_exactos": int(limpio["exacto"].sum()),
             "n_huerfanos": int((limpio["metodo"] == "huerfano").sum()), "n_ids_repetidos": int(ids.duplicated().sum()),
             "mb": round(p.stat().st_size / 1e6, 1)}
