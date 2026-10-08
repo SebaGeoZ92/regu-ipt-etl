@@ -594,10 +594,18 @@ def cmd_volumen(cfg, args):
         # V2 de VOLÚMENES: V_calc de los predios de un JSON guardado desde catastral.cl (--predios), sin nuevas consultas
         from etl import ocupacion as O
         from etl import vcalc as C
-        if not args.predios:
-            sys.exit("Falta --predios (JSON de predios guardado desde catastral.cl, ver etl/vcalc.py)")
-        predios = C.cargar_predios(Path(args.predios))
+        if not args.predios and not args.local:
+            sys.exit("Falta el origen de los predios: --local (respaldo en paths.predios, sin catastral.cl) o --predios (JSON guardado desde catastral.cl)")
         zonas = gpd.read_file(gpkg, layer="capa_ipt", where=f"fuente = 'PRC' AND ipt_nombre = '{args.ipt}'")
+        if args.local:
+            cuts = zonas["cut"].dropna().astype(str).str.zfill(5).unique()
+            if len(cuts) != 1:
+                sys.exit(f"El PRC «{args.ipt}» no corresponde a una sola comuna ({list(cuts)}): V_calc local trabaja de a una")
+            predios = C.cargar_predios_locales(ruta(cfg, "predios"), cuts[0], zonas, args.zona, limite=args.limite)
+            slug += f"_{norm_txt(args.zona).lower()}" if args.zona else ""
+            log.info("Predios locales de %s%s: %d terrenos con roles de punto exacto", args.ipt, f" · {args.zona}" if args.zona else "", len(predios))
+        else:
+            predios = C.cargar_predios(Path(args.predios))
         fps = O.regiones_con_footprints(dir_fp)
         reg = zonas["region"].dropna().iloc[0] if len(zonas) else None
         if reg not in fps:
@@ -738,7 +746,9 @@ def main():
     ap.add_argument("--cut", help="muestra: CUT(s) centrales separados por coma, p.ej. 09101")
     ap.add_argument("--nombre", help="muestra: carpeta en samples/ (por defecto, la comuna central)")
     ap.add_argument("--ipt", help='volumen: nombre del PRC (ipt_nombre), p.ej. "Temuco"')
-    ap.add_argument("--zona", help="volumen plantilla: zona elegida por el arquitecto")
+    ap.add_argument("--zona", help="volumen plantilla: zona elegida por el arquitecto; volumen vcalc --local: solo los predios de esa zona")
+    ap.add_argument("--local", action="store_true", help="volumen vcalc: predios del respaldo local (paths.predios), sin catastral.cl")
+    ap.add_argument("--limite", type=int, help="volumen vcalc --local: muestra aleatoria de hasta N terrenos (reproducible)")
     ap.add_argument("--predios", help="volumen candidatas: GeoParquet catastral local (GEOSAL), opcional")
     ap.add_argument("--footprints", help="volumen candidatas: GeoParquet de footprints (por defecto el de data/base/footprints)")
     ap.add_argument("--lon", type=float, help="ficha: longitud (EPSG:4326)")

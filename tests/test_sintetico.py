@@ -1893,6 +1893,18 @@ def test_predios_reasignar():
         assert ap["roles"] == ["00001-00002"] and ap["calidad"]["geometria"] == "aproximada" and ap["calidad"]["metodo"] == "cercano_50m"
         assert any("Asignación aproximada" in x for x in ap["calidad"]["avisos"])
         assert c.get("/api/predio", params={"cut": "09101", "rol": "9-9"}).status_code == 404
+        # V2 con los predios locales (sin catastral.cl): un registro por terreno, copropiedad sumada, solo roles con punto exacto
+        from etl import vcalc as C
+        t = C.cargar_predios_locales(d / "pq", "09101").set_index("rol")
+        assert sorted(t.index) == ["00001-00001 (+1 unidades)", "00001-00005"], list(t.index)
+        co = t.loc["00001-00001 (+1 unidades)"]
+        assert co.n_unidades == 2 and co.sup_construida_total == 120 and co.calidad_geometria == "exacta" and co.origen == "o"
+        assert abs(co.m2_terreno - gpd.GeoSeries([caja(3)], crs=4326).to_crs("ESRI:102033").area.iloc[0]) < 1, "copropiedad: el terreno es el polígono"
+        assert t.loc["00001-00005", "m2_terreno"] == 200.0 and t.loc["00001-00005", "n_unidades"] == 1, "predio normal: la superficie del SII"
+        assert sorted(C.cargar_predios_locales(d / "pq", "09101", solo_exactos=False).rol) == ["00001-00001 (+1 unidades)", "00001-00002", "00001-00005"]
+        zonas = gpd.GeoDataFrame({"zona": ["ZH2", "ZH3"]}, geometry=[caja(3).buffer(0.00005), caja(6).buffer(0.00005)], crs=4326)
+        assert list(C.cargar_predios_locales(d / "pq", "09101", zonas, "ZH2").rol) == ["00001-00001 (+1 unidades)"]
+        assert len(C.cargar_predios_locales(d / "pq", "09101", limite=1)) == 1
     print("  predios reasignación: OK")
 
 
