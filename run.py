@@ -513,11 +513,19 @@ def cmd_predios(cfg, args):
         c = cfg["comunas"]
         bcn = gpd.read_file(ruta(cfg, "comunas")).to_crs(4326)
         patron = "*.parquet" if getattr(args, "formato", None) == "parquet" else "*.gpkg"
-        m = P.convertir_todo(Path(args.origen), destino, bcn, c["field_cut"], c["field_nombre"], progreso.paso, patron=patron)
+        m = P.convertir_todo(Path(args.origen), destino, bcn, c["field_cut"], c["field_nombre"], progreso.paso, patron=patron,
+                             etiqueta=getattr(args, "etiqueta", None))
         print(m.drop(columns=["nombre_en_datos"], errors="ignore").to_string(index=False))
         print(f"\nManifiesto: {destino / 'manifiesto_predios.csv'} · {int(m.n.sum()):,} polígonos")
         return
-    sys.exit("Uso: python run.py predios [estado|convertir --origen DIR]")
+    if accion == "completar":
+        if not args.origen:
+            sys.exit("Uso: python run.py predios completar --origen <carpeta con los parquet del respaldo anterior archivado>")
+        r = P.completar_con_archivo(destino, Path(args.origen))
+        print(r.to_string(index=False))
+        print(f"\n{int(r.roles_conservados.sum()):,} roles conservados del respaldo anterior en {int((r.roles_conservados > 0).sum())} comunas")
+        return
+    sys.exit("Uso: python run.py predios [estado|convertir --origen DIR [--formato parquet] [--etiqueta X]|completar --origen DIR]")
 
 
 def cmd_teselas(cfg, args):
@@ -732,6 +740,7 @@ def main():
     ap.add_argument("--gpkg", help="ficha: GPKG de build (por defecto el más reciente, preferente nacional)")
     ap.add_argument("archivo", nargs="?", help="importar-revision: CSV con 'decision' llena · fuentes: estado|validar")
     ap.add_argument("--origen", help="predios convertir: carpeta con los GeoPackage de respaldo")
+    ap.add_argument("--etiqueta", help="predios convertir: rótulo del origen de las filas (por defecto, el nombre de la carpeta)")
     ap.add_argument("--formato", choices=["gpkg", "parquet"], default="gpkg", help="predios convertir: formato de los respaldos (por defecto gpkg)")
     ap.add_argument("--tema", help="temas generar: id del tema (temas/<id>.yaml)")
     ap.add_argument("--puerto", type=int, default=8000, help="app: puerto local (por defecto 8000)")

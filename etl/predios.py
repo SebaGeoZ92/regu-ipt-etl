@@ -15,6 +15,7 @@ trae propietarios). Los datos son de terceros (catastral.cl) y de uso personal: 
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from pathlib import Path
@@ -44,7 +45,8 @@ METODOS = (("1_contains", "contiene"), ("2_nearest", "cercano"), ("4_manzana", "
 LEER = ["_ok", "comuna", "manzana", "predio", "rol", "nombreComuna", "direccion_sii", "dc_cod_destino", "dc_cod_ubicacion", "dc_sup_terreno",
         "supTerreno", "sup_construida_total", "pisos_max", "anio_construccion_min", "anio_construccion_max", "_match_method", "periodo"]
 COLUMNAS = ["id", "cut", "cod_sii", "manzana", "predio", "rol", "comuna", "direccion", "destino_cod", "destino", "ubicacion", "sup_terreno_m2",
-            "sup_construida_m2", "pisos_max", "anio_construccion", "periodo_sii", "area_poligono_m2", "metodo", "exacto", "datos_sii", "geometry"]
+            "sup_construida_m2", "pisos_max", "anio_construccion", "periodo_sii", "area_poligono_m2", "metodo", "exacto", "datos_sii",
+            "id_poligono", "n_unidades", "origen", "geometry"]
 RE_PERIODO = re.compile(r"^\s*(PRIMER|SEGUNDO)\s+SEMESTRE\s+DE\s+(20\d{2})\s*$", re.IGNORECASE)
 
 
@@ -79,9 +81,24 @@ def _direccion(s: pd.Series) -> pd.Series:
     return t.where(~malo).astype(object)
 
 
-def limpiar(raw: gpd.GeoDataFrame, cut: str, comuna: str, cod_sii: str | None = None) -> gpd.GeoDataFrame:
+def _id_poligono(geoms) -> list[str]:
+    """Huella corta de la geometría exacta: los roles de un mismo terreno (copropiedad) comparten el polígono y, por tanto, la huella."""
+    return [hashlib.blake2b(w, digest_size=6).hexdigest() for w in shapely.to_wkb(np.asarray(geoms))]
+
+
+def agrupar_unidades(g: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, int]:
+    """Quita los duplicados exactos (mismo rol y mismo polígono) y cuenta las unidades por polígono: los roles con datos que comparten
+    terreno. Devuelve (tabla, duplicados quitados). `n_unidades` es 0 en los polígonos sin datos, 1 en un predio normal y >1 en copropiedad."""
+    dup = g["rol"].notna() & g.duplicated(["rol", "id_poligono"], keep="first")
+    g = g[~dup].copy()
+    n = g[g["datos_sii"] & g["rol"].notna()].groupby("id_poligono")["rol"].nunique()
+    g["n_unidades"] = g["id_poligono"].map(n).fillna(0).astype("int32")
+    return g, int(dup.sum())
+
+
+def limpiar(raw: gpd.GeoDataFrame, cut: str, comuna: str, cod_sii: str | None = None, origen: str | None = None) -> gpd.GeoDataFrame:
     """GeoDataFrame crudo de un respaldo (todo texto) → tabla tipada con `COLUMNAS`. `cod_sii` (el de la capa, confiable) reemplaza
-    al de las filas, que en algunas viene corrupto (p. ej. «105» en el respaldo 9103)."""
+    al de las filas, que en algunas viene corrupto (p. ej. «105» en el respaldo 9103). `origen` rotula de qué respaldo viene cada fila."""
     g = raw.copy()
     rol = g["rol"].astype("string").str.strip()
     rol_ok = rol.str.fullmatch(RE_ROL).fillna(False)
@@ -103,6 +120,7 @@ def limpiar(raw: gpd.GeoDataFrame, cut: str, comuna: str, cod_sii: str | None = 
         "pisos_max": _num(g["pisos_max"]).where(datos), "anio_construccion": anio.where(datos),
         "periodo_sii": (g["periodo"].map(normalizar_periodo) if "periodo" in g else pd.Series(None, index=g.index, dtype=object)).where(datos),
         "area_poligono_m2": area.round(1).to_numpy(), "metodo": metodo, "exacto": metodo == "contiene", "datos_sii": datos,
+        "id_poligono": _id_poligono(g.geometry.values), "n_unidades": 0, "origen": origen,
     }, geometry=g.geometry.values, crs=4326)
     out["destino"] = out["destino_cod"].map(DESTINOS)
     out["destino_cod"] = out["destino_cod"].astype(object)
@@ -139,13 +157,17 @@ def _leer(archivo: Path) -> tuple[gpd.GeoDataFrame, str]:
 
 
 def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nombre: str, destino_dir: Path, min_participacion: float = 0.9,
-                   protegidos: dict | None = None) -> dict:
+                   protegidos: dict | None = None, etiqueta: str | None = None) -> dict:
     """Convierte un respaldo (`.gpkg` o `.parquet`) a `<destino_dir>/<cut>.parquet` y devuelve su fila de manifiesto (con las cifras de
-    calidad). `protegidos` es {cut: archivo} de lo ya convertido desde otro respaldo: no se sobrescribe."""
+    calidad). `protegidos` es {cut: archivo} de lo ya convertido desde otro respaldo: no se sobrescribe. `etiqueta` rotula el origen de
+    cada fila (por defecto, el nombre de la carpeta del archivo)."""
     gpkg = Path(gpkg)
     raw, cod_archivo = _leer(gpkg)
-    n_sin_geom = int((raw.geometry.isna() | raw.geometry.is_empty).sum())      # filas con datos del SII pero sin polígono
-    raw = raw[raw.geometry.notna() & ~raw.geometry.is_empty].copy()
+    sin_geom = raw.geometry.isna() | raw.geometry.is_empty                      # filas con datos del SII pero sin polígono
+    n_sin_geom = int(sin_geom.sum())
+    rol_txt = raw["rol"].astype("string").str.strip()
+    roles_sin = sorted(set(rol_txt[sin_geom & rol_txt.str.fullmatch(RE_ROL).fillna(False)]))
+    raw = raw[~sin_geom].copy()
     raw["geometry"] = shapely.make_valid(raw.geometry.values)
     raw = raw[raw.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
     a = asignar_cut(raw, comunas_bcn, f_cut, f_nombre)
@@ -160,27 +182,87 @@ def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nomb
         return {**fila, "estado": f"sin CUT claro (participación {a['participacion']})"}
     if protegidos and protegidos.get(a["cut"], gpkg.name) != gpkg.name:
         return {**fila, "estado": f"CUT {a['cut']} ya cubierto por {protegidos[a['cut']]}: no se sobrescribe"}
-    limpio = limpiar(raw, a["cut"], a["comuna"], cod if re.fullmatch(r"\d{4,5}", cod) else None)
+    limpio = limpiar(raw, a["cut"], a["comuna"], cod if re.fullmatch(r"\d{4,5}", cod) else None, etiqueta or gpkg.parent.name)
+    limpio, n_dup = agrupar_unidades(limpio)
     destino_dir = Path(destino_dir)
     destino_dir.mkdir(parents=True, exist_ok=True)
     p = destino_dir / f"{a['cut']}.parquet"
+    _escribir(limpio, p)
+    # Roles del respaldo que no traen polígono: no entran al parquet, pero se anotan para que la unión con un respaldo anterior no los
+    # dé por ausentes (un rol que el respaldo nuevo conoce sin polígono no se rellena con el polígono aproximado de otro).
+    (destino_dir / "sin_poligono").mkdir(exist_ok=True)
+    pd.DataFrame({"rol": roles_sin}).to_csv(destino_dir / "sin_poligono" / f"{a['cut']}.csv", index=False)
+    return {**fila, "n_duplicados": n_dup, "n_roles_sin_poligono": len(roles_sin), **_estadisticas(limpio, p)}
+
+
+def _escribir(limpio: gpd.GeoDataFrame, p: Path) -> gpd.GeoDataFrame:
+    """Escribe el parquet de una comuna: orden espacial (Hilbert) y grupos de 2.000 filas con la caja envolvente de cada predio (`bbox`);
+    DuckDB salta casi todos los grupos al buscar un punto (de ≈ 1.500 ms a ≈ 15 ms en Temuco, 137.728 polígonos)."""
     tmp = p.with_suffix(".tmp")
-    # Orden espacial (Hilbert) y grupos de 2.000 filas con la caja envolvente de cada predio (`bbox`): DuckDB salta casi todos los
-    # grupos al buscar un punto (de ≈ 1.500 ms a ≈ 15 ms en Temuco, 137.728 polígonos)
     limpio = limpio.iloc[limpio.geometry.hilbert_distance().argsort()]
     limpio.to_parquet(tmp, compression="zstd", write_covering_bbox=True, row_group_size=2000)
     tmp.replace(p)
+    return limpio
+
+
+def _estadisticas(limpio: gpd.GeoDataFrame, p: Path) -> dict:
+    """Cifras de calidad de una comuna para el manifiesto."""
     ids = limpio["id"].dropna()
     per = limpio["periodo_sii"].dropna()
-    fila["periodo"] = per.value_counts().index[0] if len(per) else ""          # semestre más frecuente del respaldo de la comuna
-    fila["pct_periodo"] = round(float(len(per)) / max(1, int(limpio["datos_sii"].sum())), 3)   # fracción de predios con periodo legible
-    return {**fila, "n_datos_sii": int(limpio["datos_sii"].sum()), "n_exactos": int(limpio["exacto"].sum()),
+    datos = limpio[limpio["datos_sii"] & limpio["rol"].notna()]
+    unidades = limpio[limpio["n_unidades"] > 1]
+    return {"n": len(limpio), "periodo": per.value_counts().index[0] if len(per) else "",       # semestre más frecuente de la comuna
+            "pct_periodo": round(float(len(per)) / max(1, int(limpio["datos_sii"].sum())), 3),   # fracción de predios con periodo legible
+            "n_datos_sii": int(limpio["datos_sii"].sum()), "n_roles": int(datos["rol"].nunique()), "n_exactos": int(limpio["exacto"].sum()),
             "n_huerfanos": int((limpio["metodo"] == "huerfano").sum()), "n_ids_repetidos": int(ids.duplicated().sum()),
+            "n_terrenos_copropiedad": int(unidades["id_poligono"].nunique()), "n_roles_copropiedad": int(unidades["rol"].nunique()),
             "mb": round(p.stat().st_size / 1e6, 1)}
 
 
+def completar_con_archivo(destino_dir: Path, archivo_dir: Path) -> pd.DataFrame:
+    """Suma a cada comuna de `destino_dir` los roles con datos que solo están en el respaldo archivado de `archivo_dir` (los parquet de
+    un respaldo anterior). Unión por rol: **gana lo que ya está en `destino_dir`**; del archivo solo se conservan los roles ausentes (su
+    polígono incluido) y las comunas que el respaldo nuevo no cubre. «Ausente» es de verdad ausente: un rol que el respaldo nuevo conoce
+    pero sin polígono (`sin_poligono/<cut>.csv`) no se rellena con el polígono aproximado del archivado. No toca `archivo_dir`. Actualiza el manifiesto y devuelve, por
+    comuna, cuántos roles se conservaron."""
+    destino_dir, archivo_dir = Path(destino_dir), Path(archivo_dir)
+    mf = destino_dir / "manifiesto_predios.csv"
+    m = pd.read_csv(mf, encoding="utf-8-sig", dtype={"cut": str, "cod_sii": str})
+    filas = []
+    for ap in sorted(archivo_dir.glob("*.parquet")):
+        viejo = gpd.read_parquet(ap)
+        for c in COLUMNAS:       # un archivo de un esquema anterior: se completan las columnas nuevas
+            if c not in viejo.columns:
+                viejo[c] = None
+        viejo["id_poligono"] = _id_poligono(viejo.geometry.values)
+        viejo["origen"] = viejo["origen"].fillna("respaldo1") if viejo["origen"].notna().any() else "respaldo1"
+        p = destino_dir / ap.name
+        if p.exists():
+            nuevo = gpd.read_parquet(p)
+            sp = destino_dir / "sin_poligono" / f"{ap.stem}.csv"
+            conocidos = set(nuevo["rol"].dropna()) | (set(pd.read_csv(sp, dtype=str)["rol"].dropna()) if sp.exists() else set())
+            falta = viejo[viejo["datos_sii"] & viejo["rol"].notna() & ~viejo["rol"].isin(conocidos)]
+            if falta.empty:
+                filas.append({"cut": ap.stem, "roles_conservados": 0, "accion": "sin cambios"})
+                continue
+            total = pd.concat([nuevo, falta[COLUMNAS]], ignore_index=True)
+            accion = "unión por rol"
+        else:
+            total, falta, accion = viejo[COLUMNAS], viejo[viejo["datos_sii"]], "comuna solo del respaldo anterior"
+        total, _ = agrupar_unidades(gpd.GeoDataFrame(total, geometry="geometry", crs=4326))
+        _escribir(total, p)
+        filas.append({"cut": ap.stem, "roles_conservados": int(falta["rol"].nunique()), "accion": accion})
+        i = m.index[(m["cut"] == ap.stem) & (m["estado"] == "ok")]
+        if len(i) == 1:
+            for k, v in _estadisticas(total, p).items():
+                m.loc[i[0], k] = v
+            m.loc[i[0], "roles_conservados_respaldo1"] = int(falta["rol"].nunique())
+    m.to_csv(mf, index=False, encoding="utf-8-sig")
+    return pd.DataFrame(filas)
+
+
 def convertir_todo(origen: Path, destino_dir: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nombre: str, progreso=None,
-                   min_participacion: float = 0.9, patron: str = "*.gpkg") -> pd.DataFrame:
+                   min_participacion: float = 0.9, patron: str = "*.gpkg", etiqueta: str | None = None) -> pd.DataFrame:
     """Convierte todos los archivos de `origen` que calcen con `patron` (recursivo; `*.gpkg` o `*.parquet`). Escribe
     `manifiesto_predios.csv` en `destino_dir` **sumando** a lo ya convertido: las filas de otros archivos se conservan y un CUT ya
     cubierto por otro archivo no se sobrescribe (se marca en el manifiesto). Dentro de una misma corrida, un CUT repetido sí pisa."""
@@ -196,7 +278,7 @@ def convertir_todo(origen: Path, destino_dir: Path, comunas_bcn: gpd.GeoDataFram
         if progreso:
             progreso("predios", p.stem, i, len(archivos))
         try:
-            f = convertir_gpkg(p, comunas_bcn, f_cut, f_nombre, destino_dir, min_participacion, protegidos)
+            f = convertir_gpkg(p, comunas_bcn, f_cut, f_nombre, destino_dir, min_participacion, protegidos, etiqueta)
         except Exception as ex:   # un archivo roto no detiene el resto
             f = {"archivo": p.name, "estado": f"error: {str(ex)[:120]}"}
         if f.get("cut") in vistos and f["estado"] == "ok":

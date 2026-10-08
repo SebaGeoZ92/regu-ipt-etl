@@ -21,7 +21,12 @@ from . import datos
 from .edificios import _conexion
 
 CAMPOS = ["id", "cut", "cod_sii", "manzana", "predio", "rol", "comuna", "direccion", "destino_cod", "destino", "ubicacion", "sup_terreno_m2",
-          "sup_construida_m2", "pisos_max", "anio_construccion", "periodo_sii", "area_poligono_m2", "metodo", "exacto", "datos_sii"]
+          "sup_construida_m2", "pisos_max", "anio_construccion", "periodo_sii", "area_poligono_m2", "metodo", "exacto", "datos_sii", "id_poligono",
+          "n_unidades"]
+TIPO_COPROPIEDAD = "copropiedad / varias unidades"
+CAMPOS_UNIDAD = ["rol", "direccion", "destino_cod", "destino", "ubicacion", "sup_terreno_m2", "sup_construida_m2", "pisos_max", "anio_construccion",
+                 "periodo_sii", "metodo"]
+MAX_UNIDADES = 2000        # tope de unidades detalladas en una respuesta (hay terrenos con casi 800)
 FUENTE = {"nombre": "SII, catastro de bienes raíces, a través de catastral.cl", "tipo": "respaldo personal anterior a la API de catastral.cl",
           "uso": "personal; no se publica ni se versiona"}
 _MANIFIESTO: dict = {}
@@ -140,11 +145,68 @@ def _respuesta(filas: list[dict], periodo_comuna: str | None = None) -> dict:
     if fecha["estado"] != "sin_dato":      # para los huérfanos el aviso sobre la falta de datos ya está arriba
         avisos.append(fecha["aviso"])
     avisos.append("Respaldo de catastral.cl anterior a su API: puede estar desactualizado frente al SII.")
-    predio = {k: _json(f[k]) for k in CAMPOS if k not in ("exacto", "datos_sii", "metodo")}
-    return {"predio": predio, "geometria": mapping(geom), "n_poligonos": len(filas), "fecha_dato": fecha,
+    predio = {k: _json(f[k]) for k in CAMPOS if k not in ("exacto", "datos_sii", "metodo", "id_poligono", "n_unidades")}
+    roles = sorted({x["rol"] for x in filas if x["rol"] and x["datos_sii"]})
+    return {"predio": predio, "geometria": mapping(geom), "n_poligonos": len(filas), "tipo_predio": "predio", "copropiedad": False,
+            "n_unidades": len(roles), "roles": roles, "fecha_dato": fecha,
             "calidad": {"datos_sii": bool(f["datos_sii"]), "metodo": f["metodo"], "geometria": "sin_datos" if not f["datos_sii"] else
                         ("exacta" if f["exacto"] else "aproximada"), "avisos": avisos},
             "fuente": FUENTE}
+
+
+def _respuesta_terreno(filas: list[dict], periodo_comuna: str | None = None, rol_consultado: str | None = None) -> dict:
+    """Terreno con varios roles sobre el mismo polígono (copropiedad, condominios, edificios): la lista de roles y el número de unidades,
+    no un solo rol. `filas` son las filas con datos de todos los roles que comparten el polígono."""
+    vistos, unidades = set(), []
+    for x in sorted(filas, key=lambda x: (not x["exacto"], x["rol"] or "")):
+        if x["rol"] and x["rol"] not in vistos:
+            vistos.add(x["rol"])
+            unidades.append(x)
+    unidades.sort(key=lambda x: x["rol"])
+    ref = unidades[0]
+    for x in unidades:
+        if x["exacto"]:
+            ref = x
+            break
+
+    def comun(k):
+        v = {_json(x[k]) for x in unidades}
+        return v.pop() if len(v) == 1 else None
+    predio = {k: None for k in CAMPOS if k not in ("exacto", "datos_sii", "metodo", "id_poligono", "n_unidades")}
+    predio.update(id=f"{ref['cut']}-T-{ref['id_poligono']}", cut=ref["cut"], cod_sii=_json(ref["cod_sii"]), comuna=_json(ref["comuna"]),
+                  manzana=comun("manzana"), ubicacion=comun("ubicacion"), area_poligono_m2=_json(ref["area_poligono_m2"]))
+    fecha = fecha_dato(_json(ref["periodo_sii"]), periodo_comuna, con_datos=True)
+    avisos = [f"Copropiedad / varias unidades: {len(unidades)} roles comparten este polígono (el respaldo no distingue dónde está cada unidad "
+              "dentro del terreno). La superficie de terreno de cada rol puede ser el terreno completo o su cuota: no se suman."]
+    exactas = sum(1 for x in unidades if x["exacto"])
+    confianza = "alta" if exactas == len(unidades) else ("media" if exactas * 2 >= len(unidades) else "baja")
+    if confianza != "alta":
+        avisos.append(f"Solo {exactas} de {len(unidades)} roles se asignaron al polígono porque lo contiene su punto del SII; el resto, por coordenadas o "
+                      "cercanía." + (" Con tantos roles asignados así, puede ser un artefacto del emparejamiento y no una copropiedad real."
+                                     if confianza == "baja" else ""))
+    if len(unidades) > MAX_UNIDADES:
+        avisos.append(f"Se detallan las primeras {MAX_UNIDADES} unidades de {len(unidades)}; la lista de roles está completa.")
+    avisos.append(fecha["aviso"])
+    avisos.append("Respaldo de catastral.cl anterior a su API: puede estar desactualizado frente al SII.")
+    r = {"predio": predio, "geometria": json.loads(ref["geom"]), "n_poligonos": 1, "tipo_predio": TIPO_COPROPIEDAD, "copropiedad": True,
+         "n_unidades": len(unidades), "unidades_exactas": exactas, "confianza_copropiedad": confianza, "roles": [x["rol"] for x in unidades],
+         "unidades": [{k: _json(x[k]) for k in CAMPOS_UNIDAD} for x in unidades[:MAX_UNIDADES]], "fecha_dato": fecha,
+         "calidad": {"datos_sii": True, "metodo": ref["metodo"], "geometria": "exacta" if ref["exacto"] else "aproximada", "avisos": avisos},
+         "fuente": FUENTE}
+    if rol_consultado:
+        r["rol_consultado"] = rol_consultado
+    return r
+
+
+def _con_unidades(a, cut: str, filas: list[dict], periodo_comuna: str | None, rol_consultado: str | None = None) -> dict:
+    """`_respuesta` del predio, o `_respuesta_terreno` si otros roles comparten el polígono (n_unidades > 1)."""
+    pols = {f["id_poligono"] for f in filas if f["datos_sii"] and f["id_poligono"] and (f["n_unidades"] or 0) > 1}
+    if pols:
+        ph = ",".join("?" * len(pols))
+        otras = [x for x in _filas(a, cut, f"id_poligono IN ({ph}) AND datos_sii AND rol IS NOT NULL", sorted(pols))]
+        if len({x["rol"] for x in otras}) > 1:
+            return _respuesta_terreno(otras, periodo_comuna, rol_consultado)
+    return _respuesta(filas, periodo_comuna)
 
 
 def por_rol(a, cut: str, rol: str) -> dict | None:
@@ -152,7 +214,7 @@ def por_rol(a, cut: str, rol: str) -> dict | None:
     if n is None:
         raise ValueError(f"Rol inválido: «{rol}». Formato manzana-predio, p. ej. 1733-22 o 01733-00022")
     filas = _filas(a, cut, "rol = ?", [n])
-    return _respuesta(filas, _periodo_comuna(a, cut)) if filas else None
+    return _con_unidades(a, cut, filas, _periodo_comuna(a, cut), n) if filas else None
 
 
 MARGEN_BBOX = 0.1          # grados: la línea comunal de la BCN está generalizada y algunos predios caen un poco fuera de su caja
@@ -181,6 +243,8 @@ def en_punto(a, lon: float, lat: float) -> dict | None:
         if filas:
             filas = sorted(filas, key=lambda f: (not f["datos_sii"], not f["exacto"], f["area_poligono_m2"] or 0))
             mejor = filas[0]
+            if (mejor["n_unidades"] or 0) > 1:      # varios roles sobre el mismo polígono: se devuelve el terreno con todas sus unidades
+                return _con_unidades(a, cut, [mejor], _periodo_comuna(a, cut))
             if mejor["id"]:      # el predio completo (puede tener varios polígonos con el mismo rol)
                 return _respuesta(_filas(a, cut, "id = ?", [mejor["id"]]), _periodo_comuna(a, cut))
             return _respuesta([mejor], _periodo_comuna(a, cut))
