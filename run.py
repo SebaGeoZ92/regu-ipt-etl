@@ -518,6 +518,13 @@ def cmd_predios(cfg, args):
         print(m.drop(columns=["nombre_en_datos"], errors="ignore").to_string(index=False))
         print(f"\nManifiesto: {destino / 'manifiesto_predios.csv'} · {int(m.n.sum()):,} polígonos")
         return
+    if accion == "reasignar":
+        r = P.reasignar_todo(destino, args.max_m, progreso.paso)
+        dest = ruta(cfg, "out") / "predios_reasignacion.csv"
+        r.to_csv(dest, index=False, encoding="utf-8-sig")
+        print(f"{len(r)} comunas · {int(r.roles.sum()):,} roles · {int(r.dentro.sum()):,} dentro de su polígono · {int(r.cercano_50m.sum()):,} al más cercano "
+              f"(≤ {args.max_m:g} m) · {int(r.sin_poligono.sum()):,} sin polígono · {int(r.sin_punto_conservados.sum()):,} sin punto (conservan el suyo)\nDetalle: {dest}")
+        return
     if accion == "completar":
         if not args.origen:
             sys.exit("Uso: python run.py predios completar --origen <carpeta con los parquet del respaldo anterior archivado>")
@@ -525,7 +532,7 @@ def cmd_predios(cfg, args):
         print(r.to_string(index=False))
         print(f"\n{int(r.roles_conservados.sum()):,} roles conservados del respaldo anterior en {int((r.roles_conservados > 0).sum())} comunas")
         return
-    sys.exit("Uso: python run.py predios [estado|convertir --origen DIR [--formato parquet] [--etiqueta X]|completar --origen DIR]")
+    sys.exit("Uso: python run.py predios [estado|convertir --origen DIR [--formato parquet] [--etiqueta X]|completar --origen DIR|reasignar [--max-m 50]]")
 
 
 def cmd_teselas(cfg, args):
@@ -740,6 +747,7 @@ def main():
     ap.add_argument("--gpkg", help="ficha: GPKG de build (por defecto el más reciente, preferente nacional)")
     ap.add_argument("archivo", nargs="?", help="importar-revision: CSV con 'decision' llena · fuentes: estado|validar")
     ap.add_argument("--origen", help="predios convertir: carpeta con los GeoPackage de respaldo")
+    ap.add_argument("--max-m", dest="max_m", type=float, default=50.0, help="predios reasignar: distancia máxima (m) al polígono más cercano (50)")
     ap.add_argument("--destino", help="predios: carpeta de destino distinta de paths.predios (p. ej. la del respaldo archivado)")
     ap.add_argument("--etiqueta", help="predios convertir: rótulo del origen de las filas (por defecto, el nombre de la carpeta)")
     ap.add_argument("--formato", choices=["gpkg", "parquet"], default="gpkg", help="predios convertir: formato de los respaldos (por defecto gpkg)")

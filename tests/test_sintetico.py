@@ -1836,6 +1836,66 @@ def test_predios_union():
     print("  predios unión: OK")
 
 
+def test_predios_reasignar():
+    """Cada rol va al polígono que contiene su propio punto del SII; si no cae en ninguno, al más cercano a ≤ 50 m (aproximado); sin
+    polígono a 50 m, queda aparte con su punto; sin punto, conserva el suyo. La API lo refleja."""
+    import pandas as pd
+    from fastapi.testclient import TestClient
+    from app.main import crear_app
+    from etl import predios as P
+    lon0, lat0, dx, dy = -72.5950, -38.7350, 0.00023, 0.00027
+
+    def caja(i):
+        return box(lon0 + i * dx, lat0, lon0 + (i + 1) * dx, lat0 + dy)
+    base = {"_ok": "True", "comuna": "9201", "nombreComuna": "TEMUCO", "direccion_sii": "ALTO 10", "dc_cod_destino": "H", "dc_cod_ubicacion": "U",
+            "dc_sup_terreno": "200", "supTerreno": "0", "sup_construida_total": "60", "pisos_max": "1", "anio_construccion_min": "2001",
+            "anio_construccion_max": "2001", "periodo": "PRIMER SEMESTRE DE 2026", "_match_method": "point_in_polygon"}
+
+    def fila(n, geom, lon=None, lat=None, **x):
+        return {**base, "rol": f"00001-0000{n}", "manzana": "00001", "predio": f"0000{n}", "geometry": geom,
+                "lon": None if lon is None else str(lon), "lat": None if lat is None else str(lat), **x}
+    filas = [fila(1, caja(0), lon0 + 3.5 * dx, lat0 + 0.5 * dy),                       # ra: viene en P1, su punto está en P2
+             fila(2, caja(0), lon0 - 0.0001, lat0 + 0.5 * dy, _match_method="ah_utm_nearest"),   # rb: a ~9 m de P1
+             fila(3, caja(0), lon0 + 0.5 * dx, lat0 + 0.006),                           # rc: a ~660 m de todo
+             fila(4, caja(3)),                                                           # rd: sin punto
+             fila(5, caja(0), lon0 + 6.5 * dx, lat0 + 0.5 * dy, _match_method="ah_utm_nearest"),  # re: su punto está en P3 (huérfano)
+             {**base, "rol": "", "manzana": None, "predio": None, "_ok": None, "_match_method": "unmatched_polygon", "geometry": caja(6), "lon": None, "lat": None}]
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        (d / "o").mkdir()
+        gpd.GeoDataFrame(filas, geometry="geometry", crs=4326).to_parquet(d / "o" / "Prueba_9201.parquet")
+        P.convertir_todo(d / "o", d / "pq", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8, patron="*.parquet")
+        r = P.reasignar_todo(d / "pq").iloc[0]
+        assert (r.roles, r.dentro, r.cercano_50m, r.sin_punto_conservados, r.sin_poligono) == (5, 2, 1, 1, 1), r.to_dict()
+        g = gpd.read_parquet(d / "pq" / "09101.parquet").set_index("rol", drop=False)
+        assert "00001-00003" not in g.index, "sin polígono a 50 m: no está en el parquet"
+        ra, rb, rd, re = g.loc["00001-00001"], g.loc["00001-00002"], g.loc["00001-00004"], g.loc["00001-00005"]
+        assert ra.exacto and ra.metodo == "punto_en_poligono" and ra.id_poligono == rd.id_poligono, "ra pasa a P2, donde está su punto"
+        assert not rb.exacto and rb.metodo == "cercano_50m" and rb.id_poligono != ra.id_poligono and rb.datos_sii, "rb: el más cercano, aproximado"
+        assert re.exacto and re.metodo == "punto_en_poligono" and re.id_poligono not in (ra.id_poligono, rb.id_poligono), "re toma el polígono que era huérfano"
+        assert rd.exacto and rd.metodo == "contiene", "sin punto conserva su asignación"
+        assert ra.n_unidades == rd.n_unidades == 2 and rb.n_unidades == 0 and rb.n_asignados == 1
+        assert len(g) == 4 and int((g.metodo == "huerfano").sum()) == 0, "P1 conserva a rb; P3 ya no es huérfano"
+        side = pd.read_parquet(d / "pq" / "sin_poligono" / "09101_roles.parquet")
+        assert list(side.rol) == ["00001-00003"] and abs(side.lat_sii.iloc[0] - (lat0 + 0.006)) < 1e-6 and side.direccion.iloc[0] == "ALTO 10"
+        again = P.reasignar_todo(d / "pq").iloc[0]
+        assert (again.dentro, again.cercano_50m, again.sin_poligono) == (2, 1, 0) and len(pd.read_parquet(d / "pq" / "sin_poligono" / "09101_roles.parquet")) == 1, "idempotente"
+        a = _app_fixture(d / "app")
+        a.registrar = False
+        a.dir_predios = d / "pq"
+        c = TestClient(crear_app(a))
+        sp = c.get("/api/predio", params={"cut": "09101", "rol": "1-3"}).json()
+        assert sp["geometria"]["type"] == "Point" and sp["calidad"]["geometria"] == "solo_punto" and sp["predio"]["rol"] == "00001-00003"
+        assert sp["predio"]["direccion"] == "ALTO 10" and any("menos de 50 m" in x for x in sp["calidad"]["avisos"])
+        cp = c.get("/api/predio", params={"lon": lon0 + 3.5 * dx, "lat": lat0 + 0.5 * dy, "ficha": "false"}).json()
+        assert cp["copropiedad"] and cp["roles"] == ["00001-00001", "00001-00004"], cp["roles"]
+        ap = c.get("/api/predio", params={"lon": lon0 + 0.5 * dx, "lat": lat0 + 0.5 * dy, "ficha": "false"}).json()
+        assert ap["roles"] == ["00001-00002"] and ap["calidad"]["geometria"] == "aproximada" and ap["calidad"]["metodo"] == "cercano_50m"
+        assert any("Asignación aproximada" in x for x in ap["calidad"]["avisos"])
+        assert c.get("/api/predio", params={"cut": "09101", "rol": "9-9"}).status_code == 404
+    print("  predios reasignación: OK")
+
+
 def test_app_predios():
     """/api/predio: por rol (cut, código SII o nombre) y por punto, con ficha; huérfanos, errores y sin romper lo demás."""
     from fastapi.testclient import TestClient
@@ -2021,6 +2081,7 @@ if __name__ == "__main__":
     test_predios_conversion()
     test_predios_parquet()
     test_predios_union()
+    test_predios_reasignar()
     test_app_predios()
     test_raster_tiles()
     test_temas_generadores_comunes()

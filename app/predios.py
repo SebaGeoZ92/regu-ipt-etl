@@ -228,7 +228,31 @@ def por_rol(a, cut: str, rol: str) -> dict | None:
     if n is None:
         raise ValueError(f"Rol inválido: «{rol}». Formato manzana-predio, p. ej. 1733-22 o 01733-00022")
     filas = _filas(a, cut, "rol = ?", [n])
-    return _con_unidades(a, cut, filas, _periodo_comuna(a, cut), n) if filas else None
+    if not filas:
+        return _solo_punto(a, cut, n)
+    return _con_unidades(a, cut, filas, _periodo_comuna(a, cut), n)
+
+
+def _solo_punto(a, cut: str, rol: str) -> dict | None:
+    """Rol con datos del SII pero sin polígono a 50 m de su punto (`sin_poligono/<cut>_roles.parquet`): se devuelve el punto del SII."""
+    p = _carpeta(a) / "sin_poligono" / f"{cut}_roles.parquet"
+    if not p.exists():
+        return None
+    cur = _conexion().execute("select * from read_parquet(?) where rol = ?", [str(p), rol])
+    cols = [d[0] for d in cur.description]
+    filas = [dict(zip(cols, r)) for r in cur.fetchall()]
+    if not filas:
+        return None
+    f = filas[0]
+    predio = {k: _json(f.get(k)) for k in CAMPOS if k not in ("exacto", "datos_sii", "metodo", "id_poligono", "n_unidades", "n_asignados", "lat_sii", "lon_sii")}
+    fecha = fecha_dato(_json(f.get("periodo_sii")), _periodo_comuna(a, cut), con_datos=True)
+    punto = ({"type": "Point", "coordinates": [_json(f["lon_sii"]), _json(f["lat_sii"])]}
+             if _json(f.get("lon_sii")) is not None and _json(f.get("lat_sii")) is not None else None)
+    avisos = ["Sin polígono: el rol tiene datos del SII, pero ningún polígono del respaldo contiene su punto ni está a menos de 50 m. "
+              "Se conoce solo el punto que publica el SII." if punto else "Sin polígono ni punto en el respaldo.", fecha["aviso"],
+              "Respaldo de catastral.cl anterior a su API: puede estar desactualizado frente al SII."]
+    return {"predio": predio, "geometria": punto, "n_poligonos": 0, "tipo_predio": "predio", "copropiedad": False, "n_unidades": 1, "roles": [rol],
+            "fecha_dato": fecha, "calidad": {"datos_sii": True, "metodo": "sin_poligono", "geometria": "solo_punto", "avisos": avisos}, "fuente": FUENTE}
 
 
 MARGEN_BBOX = 0.1          # grados: la línea comunal de la BCN está generalizada y algunos predios caen un poco fuera de su caja

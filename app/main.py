@@ -135,7 +135,7 @@ def crear_app(a: Ajustes) -> FastAPI:
                     raise HTTPException(404, f"El rol {rol} no está en el respaldo de la comuna {c}")
         except predios.PrediosNoDisponibles as ex:
             raise HTTPException(503, str(ex)) from ex
-        if ficha:
+        if ficha and r.get("geometria"):
             r["ficha"] = _ficha(shape(r["geometria"]))
         return datos._sin_nan(r)
 

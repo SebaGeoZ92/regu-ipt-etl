@@ -210,6 +210,71 @@ def convertir_gpkg(gpkg: Path, comunas_bcn: gpd.GeoDataFrame, f_cut: str, f_nomb
     return {**fila, "n_duplicados": n_dup, "n_roles_sin_poligono": len(roles_sin), **_estadisticas(limpio, p)}
 
 
+METODO_PUNTO = "punto_en_poligono"       # el punto del SII del rol cae dentro del polígono asignado (certeza)
+METODO_CERCANO = "cercano_50m"            # el punto cae fuera de todo polígono: el más cercano, a no más de 50 m (aproximado)
+CAMPOS_ROL = ["id", "manzana", "predio", "rol", "direccion", "destino_cod", "destino", "ubicacion", "sup_terreno_m2", "sup_construida_m2",
+              "pisos_max", "anio_construccion", "periodo_sii", "lat_sii", "lon_sii"]
+
+
+def reasignar_por_punto(g: gpd.GeoDataFrame, max_m: float = 50.0) -> tuple[gpd.GeoDataFrame, dict, pd.DataFrame]:
+    """Reasigna cada rol con datos al polígono que **contiene su propio punto del SII** (`lat_sii`, `lon_sii`), entre todos los polígonos
+    de la comuna. Si el punto no cae en ninguno, usa el más cercano a no más de `max_m` metros y lo marca aproximado (`cercano_50m`,
+    no exacto). Un rol sin punto conserva su asignación; uno con punto pero sin polígono a `max_m` queda sin polígono (se devuelve en
+    la lista). Un polígono que se queda sin roles pasa a huérfano. Entre polígonos casi iguales gana el más pequeño y, en empate,
+    el que no viene del respaldo archivado. Devuelve (tabla, cifras, filas de los roles que quedaron sin polígono)."""
+    g = g.reset_index(drop=True)
+    datos = g["datos_sii"] & g["rol"].notna()
+    pool = g.drop_duplicates("id_poligono")[["id_poligono", "geometry", "area_poligono_m2", "origen"]].reset_index(drop=True)
+    pid = {v: i for i, v in enumerate(pool["id_poligono"])}
+    proj = gpd.GeoSeries(pool.geometry.values, crs=4326).to_crs(CRS_AREA)
+    tree = shapely.STRtree(proj.values)
+    prio = (pool["origen"].eq("respaldo1").astype(int) * 1e12 + pool["area_poligono_m2"].fillna(1e11)).to_numpy()
+    roles = g[datos].sort_values("exacto", ascending=False, kind="stable").drop_duplicates("rol").copy()
+    roles["_orig"] = roles["id_poligono"].map(pid)
+    tiene = roles["lat_sii"].notna() & roles["lon_sii"].notna()
+    pts = gpd.GeoSeries(gpd.points_from_xy(roles.loc[tiene, "lon_sii"], roles.loc[tiene, "lat_sii"]), index=roles.index[tiene], crs=4326).to_crs(CRS_AREA)
+    asignado = pd.Series(-1, index=roles.index, dtype="int64")
+    tipo = pd.Series("sin_punto", index=roles.index, dtype=object)
+    if len(pts):
+        pp, tt = tree.query(pts.values, predicate="within")
+        if len(pp):
+            df = pd.DataFrame({"p": pp, "t": tt, "prio": prio[tt]}).sort_values(["p", "prio"], kind="stable").drop_duplicates("p")
+            asignado.loc[pts.index[df["p"].to_numpy()]] = df["t"].to_numpy()
+            tipo.loc[pts.index[df["p"].to_numpy()]] = "dentro"
+        resto = pts[tipo.loc[pts.index] == "sin_punto"]
+        tipo.loc[resto.index] = "ninguno"
+        if len(resto):
+            (pn, tn), dist = tree.query_nearest(resto.values, max_distance=max_m, return_distance=True, all_matches=False)
+            if len(pn):
+                asignado.loc[resto.index[pn]] = tn
+                tipo.loc[resto.index[pn]] = "cercano"
+    sin_punto = tipo == "sin_punto"
+    asignado[sin_punto] = roles.loc[sin_punto, "_orig"]
+    perdidos = roles.index[tipo == "ninguno"]
+    ok = roles.loc[asignado >= 0].copy()
+    a = asignado.loc[ok.index].to_numpy()
+    ok["geometry"] = pool.geometry.values[a]
+    ok["id_poligono"] = pool["id_poligono"].values[a]
+    ok["area_poligono_m2"] = pool["area_poligono_m2"].values[a]
+    t = tipo.loc[ok.index]
+    ok.loc[t == "dentro", "exacto"] = True
+    ok.loc[t == "dentro", "metodo"] = METODO_PUNTO
+    ok.loc[t == "cercano", "exacto"] = False
+    ok.loc[t == "cercano", "metodo"] = METODO_CERCANO
+    usados = set(ok["id_poligono"])
+    huerf = g[~g["id_poligono"].isin(usados) & (g["origen"] != "respaldo1")].drop_duplicates("id_poligono").copy()
+    for c in CAMPOS_ROL:
+        huerf[c] = None
+    huerf["datos_sii"], huerf["exacto"], huerf["metodo"] = False, False, "huerfano"
+    out = pd.concat([ok.drop(columns="_orig"), huerf], ignore_index=True)
+    out = gpd.GeoDataFrame(out[COLUMNAS], geometry="geometry", crs=4326)
+    cambiaron = int((ok["id_poligono"].values != roles.loc[ok.index, "id_poligono"].values).sum())
+    cifras = {"roles": len(roles), "dentro": int((tipo == "dentro").sum()), "cercano_50m": int((tipo == "cercano").sum()),
+              "sin_punto_conservados": int(sin_punto.sum()), "sin_poligono": int(len(perdidos)), "cambiaron_de_poligono": cambiaron}
+    perd = pd.DataFrame(roles.loc[perdidos, ["cut", "cod_sii", "comuna", *CAMPOS_ROL, "origen", "metodo"]]).reset_index(drop=True)
+    return out, cifras, perd
+
+
 def _escribir(limpio: gpd.GeoDataFrame, p: Path) -> gpd.GeoDataFrame:
     """Escribe el parquet de una comuna: orden espacial (Hilbert) y grupos de 2.000 filas con la caja envolvente de cada predio (`bbox`);
     DuckDB salta casi todos los grupos al buscar un punto (de ≈ 1.500 ms a ≈ 15 ms en Temuco, 137.728 polígonos)."""
@@ -279,6 +344,45 @@ def completar_con_archivo(destino_dir: Path, archivo_dir: Path) -> pd.DataFrame:
                 m.loc[i[0], k] = v
             m.loc[i[0], "roles_conservados_respaldo1"] = int(falta["rol"].nunique())
             m.loc[i[0], "roles_rellenados_respaldo1"] = n_rel
+    m.to_csv(mf, index=False, encoding="utf-8-sig")
+    return pd.DataFrame(filas)
+
+
+def reasignar_todo(destino_dir: Path, max_m: float = 50.0, progreso=None) -> pd.DataFrame:
+    """`reasignar_por_punto` en cada comuna de `destino_dir`. Reescribe los parquet, actualiza el manifiesto y guarda los roles que
+    quedan sin polígono (con sus datos y su punto) en `sin_poligono/<cut>_roles.parquet`, para no perder su información. Devuelve, por
+    comuna, las cifras de antes y después."""
+    destino_dir = Path(destino_dir)
+    mf = destino_dir / "manifiesto_predios.csv"
+    m = pd.read_csv(mf, encoding="utf-8-sig", dtype={"cut": str, "cod_sii": str})
+    (destino_dir / "sin_poligono").mkdir(exist_ok=True)
+    archivos = sorted(destino_dir.glob("*.parquet"))
+    filas = []
+    for i, p in enumerate(archivos, 1):
+        if progreso:
+            progreso("predios", p.stem, i, len(archivos))
+        g = gpd.read_parquet(p)
+        d0 = g[g["datos_sii"] & g["rol"].notna()].drop_duplicates("rol")
+        out, c, perd = reasignar_por_punto(g, max_m)
+        out, _ = agrupar_unidades(out)
+        out = _escribir(out, p)
+        side = destino_dir / "sin_poligono" / f"{p.stem}_roles.parquet"
+        if len(perd) or side.exists():          # se suman a los de corridas anteriores, salvo los que ya tienen polígono
+            prev = pd.read_parquet(side) if side.exists() else perd.iloc[0:0]
+            todos = pd.concat([prev[~prev["rol"].isin(out["rol"].dropna())], perd], ignore_index=True).drop_duplicates("rol", keep="last")
+            todos.to_parquet(side, index=False) if len(todos) else side.unlink(missing_ok=True)
+        d1 = out[out["datos_sii"] & out["rol"].notna()].drop_duplicates("rol")
+        filas.append({"cut": p.stem, "comuna": out["comuna"].iloc[0] if len(out) else "", "roles": c["roles"],
+                      "exactos_antes": int(d0["exacto"].sum()), "exactos_despues": int(d1["exacto"].sum()),
+                      "aprox_antes": int((~d0["exacto"]).sum()), "aprox_despues": int((~d1["exacto"]).sum()),
+                      "dentro": c["dentro"], "cercano_50m": c["cercano_50m"], "sin_punto_conservados": c["sin_punto_conservados"],
+                      "sin_poligono": c["sin_poligono"], "cambiaron_de_poligono": c["cambiaron_de_poligono"],
+                      "max_roles_exactos_en_un_terreno": int(out["n_unidades"].max()), "max_roles_asignados_en_un_terreno": int(out["n_asignados"].max())})
+        j = m.index[(m["cut"] == p.stem) & (m["estado"] == "ok")]
+        if len(j) == 1:
+            for k, v in _estadisticas(out, p).items():
+                m.loc[j[0], k] = v
+            m.loc[j[0], ["roles_reasignados_punto", "roles_cercano_50m", "roles_sin_poligono_50m"]] = [c["dentro"], c["cercano_50m"], c["sin_poligono"]]
     m.to_csv(mf, index=False, encoding="utf-8-sig")
     return pd.DataFrame(filas)
 
