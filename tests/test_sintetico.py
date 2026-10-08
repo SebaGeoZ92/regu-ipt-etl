@@ -571,14 +571,29 @@ def test_vcalc_sintetico():
         box(90.5, 2, 99.5, 8),  # D: 54 m²
     ], crs=crs)
     zonas = gpd.GeoDataFrame({"zona": ["ZH2"]}, geometry=[box(-5, -5, 55, 15)], crs=crs)
-    t = C.calcular(predios, edif, zonas=zonas).set_index("rol")
+    t = C.calcular(predios, edif, zonas=zonas, regla="umbral50").set_index("rol")      # la regla original
     a, b, c, d = t.loc["A"], t.loc["B"], t.loc["C"], t.loc["D"]
     assert a.n_edificios == 2 and abs(a.huella_m2 - 160) < 1e-6 and a.pisos_est == 2 and abs(a.m2_equiv - 320) < 1e-6 and a.zona == "ZH2", a
     assert b.pisos_est == 1 and abs(b.huella_m2 - 60) < 1e-6 and b.fuente_pisos == "sii" and b.confianza_pisos
     assert c.estado == "sin_dato" and c.n_edificios == 0 and np.isnan(c.m2_equiv) and c.zona == "" and "sin huella" in c.avisos
     assert d.pisos_est == 1 and d.zona == "" and "menos de la mitad" in d.avisos, d
     assert t.v_calc_m3.isna().all(), "sin altura de piso de referencia no hay m³"
-    assert abs(C.calcular(predios, edif, altura_piso_ref_m=2.5).set_index("rol").loc["A", "v_calc_m3"] - 800) < 1e-6
+    assert abs(C.calcular(predios, edif, altura_piso_ref_m=2.5, regla="umbral50").set_index("rol").loc["A", "v_calc_m3"] - 800) < 1e-6
+    # casas pareadas: un edificio repartido entre dos lotes (60 % / 40 %) y una astilla sobre un tercero
+    lotes = gpd.GeoDataFrame({"rol": ["P", "Q", "R"], "m2_terreno": [200.0, 200.0, 200.0], "sup_construida_total": [192.0, 64.0, 50.0],
+                              "pisos_max": [2, 1, 1]}, geometry=[box(0, 0, 10, 20), box(10, 0, 20, 20), box(40, 0, 50, 20)], crs=crs)
+    casas = gpd.GeoDataFrame({"num_floors": [np.nan, np.nan]}, geometry=[
+        box(4, 2, 14, 18),          # 160 m²: 96 m² en P (60 %), 64 m² en Q (40 %)
+        box(38.5, 5, 40.5, 6),      # 2 m²: solo 0,5 m² en R (25 % del edificio, 0,25 % del terreno): astilla
+    ], crs=crs)
+    old = C.calcular(lotes, casas, regla="umbral50").set_index("rol")
+    assert abs(old.loc["P", "huella_m2"] - 160) < 1e-6 and old.loc["Q", "estado"] == "sin_dato" and "sin huella" in old.loc["Q", "avisos"], "50 %: P se lleva todo y Q queda sin huella"
+    new = C.calcular(lotes, casas).set_index("rol")
+    p, q, r = new.loc["P"], new.loc["Q"], new.loc["R"]
+    assert abs(p.huella_m2 - 96) < 1e-6 and abs(q.huella_m2 - 64) < 1e-6, "reparto por área de intersección"
+    assert p.pisos_est == 2 and q.pisos_est == 1 and q.estado == "ok" and "compartido" in p.avisos and "compartido" in q.avisos
+    assert r.estado == "sin_dato" and r.n_edificios == 0 and "sin huella" in r.avisos, "la astilla no cuenta"
+    assert abs(new.huella_m2.sum() - 160) < 1e-6, "no se crea ni se pierde huella al repartir"
     print("  vcalc: OK")
 
 

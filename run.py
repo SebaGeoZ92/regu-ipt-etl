@@ -612,7 +612,9 @@ def cmd_volumen(cfg, args):
             sys.exit(f"Sin footprints completos para la región de {args.ipt} ({reg}): corre `footprints descargar`")
         x0, y0, x1, y1 = predios.total_bounds
         edif = gpd.read_parquet(fps[reg]).cx[x0 - 0.002:x1 + 0.002, y0 - 0.002:y1 + 0.002]
-        tabla = C.calcular(predios, edif, zonas=zonas)
+        tabla = C.calcular(predios, edif, zonas=zonas, regla=args.regla)
+        if args.regla != "proporcional":
+            slug += f"_{args.regla}"
         destino = out / f"vcalc_{slug}_piloto.csv"
         tabla.to_csv(destino, index=False, encoding="utf-8-sig")
         with pd.option_context("display.width", 220, "display.max_columns", 30, "display.max_colwidth", 60):
@@ -748,6 +750,8 @@ def main():
     ap.add_argument("--ipt", help='volumen: nombre del PRC (ipt_nombre), p.ej. "Temuco"')
     ap.add_argument("--zona", help="volumen plantilla: zona elegida por el arquitecto; volumen vcalc --local: solo los predios de esa zona")
     ap.add_argument("--local", action="store_true", help="volumen vcalc: predios del respaldo local (paths.predios), sin catastral.cl")
+    ap.add_argument("--regla", choices=["proporcional", "umbral50"], default="proporcional",
+                    help="volumen vcalc: huella de cada edificio repartida por área de intersección (por defecto) o la regla original del 50 %%")
     ap.add_argument("--limite", type=int, help="volumen vcalc --local: muestra aleatoria de hasta N terrenos (reproducible)")
     ap.add_argument("--predios", help="volumen candidatas: GeoParquet catastral local (GEOSAL), opcional")
     ap.add_argument("--footprints", help="volumen candidatas: GeoParquet de footprints (por defecto el de data/base/footprints)")

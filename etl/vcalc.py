@@ -1,7 +1,9 @@
 """V2 de VOLÚMENES (docs/VOLUMENES.md): volumen calculado (V_calc) por predio, según los registros.
 
 V_calc = huella × pisos estimados, con
-- huella = suma del área de los edificios de Overture que caen en más del 50 % dentro del predio;
+- huella = suma de la parte de cada edificio de Overture que cae dentro del predio (reparto proporcional al área de la
+  intersección; se ignoran las astillas: partes menores al 10 % del edificio o del terreno). La regla original, el edificio entero si cae en más del 50 %
+  dentro, sigue disponible como `regla="umbral50"`;
 - pisos = max(1, round(superficie construida SII / huella)); sin superficie construida SII se usa `num_floors`
   de Overture si existe y, si no, el predio queda `sin_dato` (no se inventa).
 
@@ -24,7 +26,9 @@ import shapely
 from shapely.geometry import shape
 
 CRS_AREA = "ESRI:102033"
-UMBRAL_DENTRO = 0.5
+UMBRAL_DENTRO = 0.5          # regla `umbral50`: el edificio va entero al predio que lo contiene en más de esta fracción
+UMBRAL_PARTE = 0.10          # regla `proporcional`: se ignora la parte de un edificio menor a esta fracción de su área...
+UMBRAL_PARTE_TERRENO = 0.10  # ...o menor a esta fracción del terreno (astillas por el desfase entre Overture y los polígonos del SII)
 COLUMNAS = ["rol", "direccion", "zona", "sup_terreno_m2", "sup_construida_sii_m2", "n_edificios", "huella_m2", "pisos_est",
             "pisos_max_sii", "m2_equiv", "v_calc_m3", "ocupacion_predio", "estado", "fuente_huella", "fuente_pisos",
             "confianza_pisos", "avisos", "n_unidades", "calidad_geometria", "origen"]
@@ -73,17 +77,33 @@ def cargar_predios_locales(dir_predios: Path, cut: str, zonas: gpd.GeoDataFrame 
 
 
 def calcular(predios: gpd.GeoDataFrame, edificios: gpd.GeoDataFrame, altura_piso_ref_m: float | None = None,
-             zonas: gpd.GeoDataFrame | None = None) -> pd.DataFrame:
-    """V_calc por predio. `zonas` (opcional) = piezas PRC con `zona` para etiquetar la zona de cada predio."""
+             zonas: gpd.GeoDataFrame | None = None, regla: str = "proporcional") -> pd.DataFrame:
+    """V_calc por predio. `zonas` (opcional) = piezas PRC con `zona` para etiquetar la zona de cada predio.
+
+    `regla` decide qué huella recibe cada predio:
+    - `proporcional` (por defecto): cada predio recibe **la parte de cada edificio que cae dentro de él** (el área de la intersección);
+      se ignoran las astillas, partes menores al 10 % del edificio o al 10 % del terreno (desfase entre las huellas de Overture y
+      los polígonos del SII), salvo que sean la mayoría del edificio. Así una casa pareada o continua que cubre varios lotes se
+      reparte entre ellos en vez de descartarse en todos.
+    - `umbral50` (la regla original): el edificio completo va al predio que lo contiene en más del 50 %; un edificio repartido por
+      mitades queda sin dueño."""
+    if regla not in ("proporcional", "umbral50"):
+        raise ValueError(f"regla desconocida: {regla}")
     p = predios.to_crs(CRS_AREA).reset_index(drop=True)
     e = edificios.to_crs(CRS_AREA).reset_index(drop=True)
     e["geometry"] = shapely.make_valid(e.geometry.values)
     e["m2"] = e.geometry.area
     par = gpd.sjoin(e[["geometry", "m2"]], p[["geometry"]], how="inner", predicate="intersects")
     dentro = shapely.area(shapely.intersection(e.geometry.loc[par.index].values, p.geometry.iloc[par["index_right"].values].values))
-    par = par.assign(frac=dentro / par["m2"].values)
-    par = par[par["frac"] > UMBRAL_DENTRO]
-    por_predio = par.groupby("index_right").agg(n=("m2", "size"), huella=("m2", "sum"))
+    par = par.assign(frac=dentro / par["m2"].values, aporte=dentro)
+    if regla == "umbral50":
+        par = par[par["frac"] > UMBRAL_DENTRO].copy()
+        par["aporte"] = par["m2"]
+    else:      # la parte cuenta si es la mayoría del edificio o si no es una astilla: ≥ 10 % del edificio y ≥ 10 % del terreno
+        frac_terreno = par["aporte"].values / p.geometry.area.to_numpy()[par["index_right"].to_numpy()]
+        par = par[(par["frac"] > UMBRAL_DENTRO) | ((par["frac"] >= UMBRAL_PARTE) & (frac_terreno >= UMBRAL_PARTE_TERRENO))].copy()
+    par["compartido"] = par.groupby(level=0)["index_right"].transform("size") > 1
+    por_predio = par.groupby("index_right").agg(n=("m2", "size"), huella=("aporte", "sum"), n_comp=("compartido", "sum"))
     nf = edificios["num_floors"] if "num_floors" in edificios.columns else pd.Series(np.nan, index=edificios.index)
     pisos_ov = (pd.Series(nf.values, index=e.index).loc[par.index].groupby(par["index_right"]).max())
 
@@ -112,7 +132,12 @@ def calcular(predios: gpd.GeoDataFrame, edificios: gpd.GeoDataFrame, altura_piso
             estado = "sin_dato"
             avisos.append("sin superficie construida SII ni num_floors de Overture")
         if estado == "ok" and pisos >= 5:
+            conf = "baja"
             avisos.append(f"{pisos} pisos estimados: la huella de Overture puede estar incompleta (la construida SII es mucho mayor que la huella)")
+        ncomp = int(por_predio["n_comp"].get(i, 0))
+        if ncomp:
+            avisos.append(f"{ncomp} edificio{'s' if ncomp > 1 else ''} compartido{'s' if ncomp > 1 else ''} con otros terrenos (pareado o continuo): "
+                          "se cuenta solo la parte que cae dentro de este terreno")
         if huella > 0 and not np.isnan(sup_c) and sup_c / huella < 0.5:
             avisos.append("la construida SII es menos de la mitad de la huella: puede haber construcción sin registrar")
         if sup_t and huella > sup_t * 1.05:
