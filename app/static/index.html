@@ -98,7 +98,7 @@
     <span class="sello">Solo local</span>
     <span class="sello" id="marca">BORRADOR · uso interno</span>
     <div id="buscador">
-      <input id="q" type="search" placeholder="Buscar comuna…" autocomplete="off" aria-label="Buscar comuna">
+      <input id="q" type="search" placeholder="Buscar comuna o «lon, lat»…" autocomplete="off" aria-label="Buscar comuna o coordenadas">
       <div id="sugerencias" role="listbox"></div>
     </div>
   </header>
@@ -620,7 +620,18 @@ q.addEventListener("input", () => {
   sug.querySelectorAll("button").forEach((b, i) => b.addEventListener("click", () => irA(r[i])));
 });
 q.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") { const b = sug.querySelector("button"); if (b) b.click(); }
+  if (e.key === "Enter") {
+    // «lon, lat» (o «lat, lon» con latitud negativa primero): se acerca al punto, para revisar un caso concreto
+    const m = q.value.trim().match(/^(-?\d{1,3}(?:[.,]\d+)?)\s*[;,\s]\s*(-?\d{1,3}(?:[.,]\d+)?)$/);
+    if (m) {
+      let [a, b] = [parseFloat(m[1].replace(",", ".")), parseFloat(m[2].replace(",", "."))];
+      const [lon, lat] = Math.abs(a) >= Math.abs(b) ? [a, b] : [b, a];      // en Chile la longitud (66 a 110) supera a la latitud (17 a 56) en valor absoluto
+      sug.style.display = "none";
+      mapa.flyTo({center: [lon, lat], zoom: 19, pitch: 50, duration: 800});
+      return;
+    }
+    const b = sug.querySelector("button"); if (b) b.click();
+  }
   if (e.key === "Escape") sug.style.display = "none";
 });
 document.addEventListener("click", (e) => { if (!$("buscador").contains(e.target)) sug.style.display = "none"; });
