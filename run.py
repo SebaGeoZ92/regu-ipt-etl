@@ -497,7 +497,7 @@ def cmd_predios(cfg, args):
     """Predios del SII (respaldo personal de catastral.cl): `convertir --origen DIR` | `estado`. Ver etl/predios.py."""
     from etl import predios as P
     accion = args.archivo or "estado"
-    destino = ruta(cfg, "predios")
+    destino = Path(args.destino) if getattr(args, "destino", None) else ruta(cfg, "predios")
     if accion == "estado":
         m = destino / "manifiesto_predios.csv"
         if not m.exists():
@@ -740,6 +740,7 @@ def main():
     ap.add_argument("--gpkg", help="ficha: GPKG de build (por defecto el más reciente, preferente nacional)")
     ap.add_argument("archivo", nargs="?", help="importar-revision: CSV con 'decision' llena · fuentes: estado|validar")
     ap.add_argument("--origen", help="predios convertir: carpeta con los GeoPackage de respaldo")
+    ap.add_argument("--destino", help="predios: carpeta de destino distinta de paths.predios (p. ej. la del respaldo archivado)")
     ap.add_argument("--etiqueta", help="predios convertir: rótulo del origen de las filas (por defecto, el nombre de la carpeta)")
     ap.add_argument("--formato", choices=["gpkg", "parquet"], default="gpkg", help="predios convertir: formato de los respaldos (por defecto gpkg)")
     ap.add_argument("--tema", help="temas generar: id del tema (temas/<id>.yaml)")

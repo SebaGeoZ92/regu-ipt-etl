@@ -43,11 +43,12 @@ METODOS = (("1_contains", "contiene"), ("2_nearest", "cercano"), ("4_manzana", "
            ("point_in_polygon", "contiene"), ("nearest", "cercano"), ("unmatched_polygon", "huerfano"),
            ("address_inheritance", "herencia_direccion"), ("ah_utm", "utm"), ("csa_utm", "utm"))
 LEER = ["_ok", "comuna", "manzana", "predio", "rol", "nombreComuna", "direccion_sii", "dc_cod_destino", "dc_cod_ubicacion", "dc_sup_terreno",
-        "supTerreno", "sup_construida_total", "pisos_max", "anio_construccion_min", "anio_construccion_max", "_match_method", "periodo"]
+        "supTerreno", "sup_construida_total", "pisos_max", "anio_construccion_min", "anio_construccion_max", "_match_method", "periodo", "lat", "lon"]
 COLUMNAS = ["id", "cut", "cod_sii", "manzana", "predio", "rol", "comuna", "direccion", "destino_cod", "destino", "ubicacion", "sup_terreno_m2",
             "sup_construida_m2", "pisos_max", "anio_construccion", "periodo_sii", "area_poligono_m2", "metodo", "exacto", "datos_sii",
-            "id_poligono", "n_unidades", "origen", "geometry"]
-RE_PERIODO = re.compile(r"^\s*(PRIMER|SEGUNDO)\s+SEMESTRE\s+DE\s+(20\d{2})\s*$", re.IGNORECASE)
+            "lat_sii", "lon_sii", "id_poligono", "n_unidades", "n_asignados", "origen", "geometry"]
+METODO_RELLENO = "relleno_respaldo1"      # rol conocido sin polígono por el respaldo nuevo; el polígono viene del Respaldo 1 (aproximado)
+RE_PERIODO =re.compile(r"^\s*(PRIMER|SEGUNDO)\s+SEMESTRE\s+DE\s+(20\d{2})\s*$", re.IGNORECASE)
 
 
 def normalizar_periodo(valor) -> str | None:
@@ -74,6 +75,14 @@ def _metodo(s: pd.Series) -> pd.Series:
     return out
 
 
+def _coord(s: pd.Series | None, index, minimo: float, maximo: float) -> pd.Series:
+    """Coordenada del punto que el SII publica para el rol (grados); nula si falta o cae fuera de Chile (columna corrida)."""
+    if s is None:
+        return pd.Series(np.nan, index=index, dtype="float64")
+    v = _num(s)
+    return v.where((v >= minimo) & (v <= maximo)).round(6)
+
+
 def _direccion(s: pd.Series) -> pd.Series:
     """Dirección del SII; nulo si es vacía, un número suelto (columna corrida) o un mensaje de error de conexión."""
     t = s.astype("string").str.strip()
@@ -87,12 +96,16 @@ def _id_poligono(geoms) -> list[str]:
 
 
 def agrupar_unidades(g: gpd.GeoDataFrame) -> tuple[gpd.GeoDataFrame, int]:
-    """Quita los duplicados exactos (mismo rol y mismo polígono) y cuenta las unidades por polígono: los roles con datos que comparten
-    terreno. Devuelve (tabla, duplicados quitados). `n_unidades` es 0 en los polígonos sin datos, 1 en un predio normal y >1 en copropiedad."""
+    """Quita los duplicados exactos (mismo rol y mismo polígono) y cuenta, por polígono, los roles con datos que lo comparten.
+    `n_unidades` cuenta solo los roles **asignados con certeza** (el polígono contiene su punto del SII, `exacto`): es la copropiedad
+    confiable (>1). `n_asignados` cuenta todos los roles con datos, también los asignados por coordenadas o cercanía (un polígono con miles
+    de roles así es un artefacto del emparejamiento). Ambos valen 0 donde no hay roles; devuelve (tabla, duplicados quitados)."""
     dup = g["rol"].notna() & g.duplicated(["rol", "id_poligono"], keep="first")
     g = g[~dup].copy()
-    n = g[g["datos_sii"] & g["rol"].notna()].groupby("id_poligono")["rol"].nunique()
+    con_rol = g[g["datos_sii"] & g["rol"].notna()]
+    n = con_rol[con_rol["exacto"]].groupby("id_poligono")["rol"].nunique()
     g["n_unidades"] = g["id_poligono"].map(n).fillna(0).astype("int32")
+    g["n_asignados"] = g["id_poligono"].map(con_rol.groupby("id_poligono")["rol"].nunique()).fillna(0).astype("int32")
     return g, int(dup.sum())
 
 
@@ -120,7 +133,9 @@ def limpiar(raw: gpd.GeoDataFrame, cut: str, comuna: str, cod_sii: str | None = 
         "pisos_max": _num(g["pisos_max"]).where(datos), "anio_construccion": anio.where(datos),
         "periodo_sii": (g["periodo"].map(normalizar_periodo) if "periodo" in g else pd.Series(None, index=g.index, dtype=object)).where(datos),
         "area_poligono_m2": area.round(1).to_numpy(), "metodo": metodo, "exacto": metodo == "contiene", "datos_sii": datos,
-        "id_poligono": _id_poligono(g.geometry.values), "n_unidades": 0, "origen": origen,
+        "lat_sii": _coord(g["lat"] if "lat" in g else None, g.index, -56, -17).where(datos),
+        "lon_sii": _coord(g["lon"] if "lon" in g else None, g.index, -110, -66).where(datos),
+        "id_poligono": _id_poligono(g.geometry.values), "n_unidades": 0, "n_asignados": 0, "origen": origen,
     }, geometry=g.geometry.values, crs=4326)
     out["destino"] = out["destino_cod"].map(DESTINOS)
     out["destino_cod"] = out["destino_cod"].astype(object)
@@ -222,8 +237,8 @@ def _estadisticas(limpio: gpd.GeoDataFrame, p: Path) -> dict:
 def completar_con_archivo(destino_dir: Path, archivo_dir: Path) -> pd.DataFrame:
     """Suma a cada comuna de `destino_dir` los roles con datos que solo están en el respaldo archivado de `archivo_dir` (los parquet de
     un respaldo anterior). Unión por rol: **gana lo que ya está en `destino_dir`**; del archivo solo se conservan los roles ausentes (su
-    polígono incluido) y las comunas que el respaldo nuevo no cubre. «Ausente» es de verdad ausente: un rol que el respaldo nuevo conoce
-    pero sin polígono (`sin_poligono/<cut>.csv`) no se rellena con el polígono aproximado del archivado. No toca `archivo_dir`. Actualiza el manifiesto y devuelve, por
+    polígono incluido) y las comunas que el respaldo nuevo no cubre. Un rol que el respaldo nuevo conoce pero sin polígono
+    (`sin_poligono/<cut>.csv`) se rellena con el del archivado, marcado `relleno_respaldo1` y no exacto. No toca `archivo_dir`. Actualiza el manifiesto y devuelve, por
     comuna, cuántos roles se conservaron."""
     destino_dir, archivo_dir = Path(destino_dir), Path(archivo_dir)
     mf = destino_dir / "manifiesto_predios.csv"
@@ -240,8 +255,13 @@ def completar_con_archivo(destino_dir: Path, archivo_dir: Path) -> pd.DataFrame:
         if p.exists():
             nuevo = gpd.read_parquet(p)
             sp = destino_dir / "sin_poligono" / f"{ap.stem}.csv"
-            conocidos = set(nuevo["rol"].dropna()) | (set(pd.read_csv(sp, dtype=str)["rol"].dropna()) if sp.exists() else set())
-            falta = viejo[viejo["datos_sii"] & viejo["rol"].notna() & ~viejo["rol"].isin(conocidos)]
+            sin_pol = set(pd.read_csv(sp, dtype=str)["rol"].dropna()) if sp.exists() else set()
+            falta = viejo[viejo["datos_sii"] & viejo["rol"].notna() & ~viejo["rol"].isin(set(nuevo["rol"].dropna()))].copy()
+            # Los roles que el respaldo nuevo conoce SIN polígono se rellenan con el polígono del archivado, pero como aproximado: no
+            # exacto y con método propio (no se agrupan en copropiedad y la API avisa de dónde sale el polígono).
+            rel = falta["rol"].isin(sin_pol)
+            falta.loc[rel, "exacto"] = False
+            falta.loc[rel, "metodo"] = METODO_RELLENO
             if falta.empty:
                 filas.append({"cut": ap.stem, "roles_conservados": 0, "accion": "sin cambios"})
                 continue
@@ -251,12 +271,14 @@ def completar_con_archivo(destino_dir: Path, archivo_dir: Path) -> pd.DataFrame:
             total, falta, accion = viejo[COLUMNAS], viejo[viejo["datos_sii"]], "comuna solo del respaldo anterior"
         total, _ = agrupar_unidades(gpd.GeoDataFrame(total, geometry="geometry", crs=4326))
         _escribir(total, p)
-        filas.append({"cut": ap.stem, "roles_conservados": int(falta["rol"].nunique()), "accion": accion})
+        n_rel = int((falta["metodo"] == METODO_RELLENO).sum())
+        filas.append({"cut": ap.stem, "roles_conservados": int(falta["rol"].nunique()), "roles_rellenados": n_rel, "accion": accion})
         i = m.index[(m["cut"] == ap.stem) & (m["estado"] == "ok")]
         if len(i) == 1:
             for k, v in _estadisticas(total, p).items():
                 m.loc[i[0], k] = v
             m.loc[i[0], "roles_conservados_respaldo1"] = int(falta["rol"].nunique())
+            m.loc[i[0], "roles_rellenados_respaldo1"] = n_rel
     m.to_csv(mf, index=False, encoding="utf-8-sig")
     return pd.DataFrame(filas)
 

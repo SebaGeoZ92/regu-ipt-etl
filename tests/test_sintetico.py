@@ -1667,6 +1667,12 @@ def _predios_sucios(origen: Path):
         fila(caja(2, 2), "01740-00001", direccion="EDIFICIO 1 DEPTO 1"),                                       # I1 e I2: copropiedad (dos roles, un polígono)
         fila(caja(2, 2), "01740-00002", direccion="EDIFICIO 1 DEPTO 2", terreno="900.0"),
         fila(caja(2, 2), "01740-00001", direccion="EDIFICIO 1 DEPTO 1"),                                       # I3: duplicado exacto de I1 (mismo rol y polígono)
+        # J: un rol exacto y dos asignados por cercanía al mismo polígono; K: dos roles solo por cercanía (no hay certeza de copropiedad)
+        fila(caja(4, 2), "01741-00001", lat="-38.73425", lon="-72.59395"),
+        fila(caja(4, 2), "01741-00002", metodo="2_nearest", lat="-38.73430", lon="-72.59390"),
+        fila(caja(4, 2), "01741-00003", metodo="2_nearest", lat="-38.73421", lon="-72.59388"),
+        fila(caja(5, 2), "01742-00001", metodo="2_nearest", lat="-38.73430", lon="-72.59380"),
+        fila(caja(5, 2), "01742-00002", metodo="2_nearest", lat="-38.73430", lon="-72.59366"),
     ]
     gdf = gpd.GeoDataFrame(filas, geometry="geometry", crs=4326)
     gdf.to_file(origen / "9201_9201.gpkg", layer="comuna=9201", driver="GPKG")                                 # código SII 9201 = CUT 09101
@@ -1696,9 +1702,9 @@ def test_predios_conversion():
         origen = _predios_sucios(d / "Respaldo")
         m = P.convertir_todo(origen, d / "pq", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8).set_index("archivo")
         t = m.loc["9201_9201.gpkg"]
-        assert t.cut == "09101" and t.comuna_bcn == "Temuco" and t.cod_sii == "9201" and t.participacion_cut == 0.917 and t.coincide_nombre, "el CUT sale de la geometría"
-        assert t.n == 11 and t.n_datos_sii == 9 and t.n_huerfanos == 1 and t.n_exactos == 8 and t.n_ids_repetidos == 1 and t.estado == "ok", t.to_dict()
-        assert t.n_duplicados == 1 and t.n_roles == 8 and t.n_terrenos_copropiedad == 1 and t.n_roles_copropiedad == 2, "duplicado exacto fuera; 1 terreno con 2 roles"
+        assert t.cut == "09101" and t.comuna_bcn == "Temuco" and t.cod_sii == "9201" and t.participacion_cut == 0.941 and t.coincide_nombre, "el CUT sale de la geometría"
+        assert t.n == 16 and t.n_datos_sii == 14 and t.n_huerfanos == 1 and t.n_exactos == 9 and t.n_ids_repetidos == 1 and t.estado == "ok", t.to_dict()
+        assert t.n_duplicados == 1 and t.n_roles == 13 and t.n_terrenos_copropiedad == 1 and t.n_roles_copropiedad == 2, "duplicado exacto fuera; 1 terreno con 2 roles"
         v = m.loc["Puerto_Montt_10101.gpkg"]
         assert v.cut == "09112" and v.cod_sii == "10101" and not v.coincide_nombre and v.nombre_en_datos == "VALDIVIA", "nombre engañoso: manda la geometría"
         m2 = P.convertir_todo(origen, d / "pq2", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.95).set_index("archivo")
@@ -1731,6 +1737,10 @@ def test_predios_conversion():
         assert not isinstance(i1, gpd.GeoDataFrame), "el duplicado exacto (mismo rol y polígono) se quitó"
         assert i1.id_poligono == i2.id_poligono and i1.n_unidades == i2.n_unidades == 2, "dos roles, un polígono = copropiedad"
         assert g.loc["01733-00022"].n_unidades == 1 and (g[g["metodo"] == "huerfano"].n_unidades == 0).all()
+        j = g[g.rol.str.startswith("01741", na=False)].set_index("rol")
+        assert (j.n_asignados == 3).all() and (j.n_unidades == 1).all(), "n_unidades del polígono cuenta solo los roles exactos (1); n_asignados, todos (3)"
+        assert g.loc["01733-00023"].n_unidades == 0 and g.loc["01733-00023"].n_asignados == 1, "el asignado por cercanía no es unidad"
+        assert abs(j.loc["01741-00002", "lat_sii"] + 38.7343) < 1e-6 and abs(j.loc["01741-00002", "lon_sii"] + 72.5939) < 1e-6 and pd.isna(g.loc["01733-00022"].lat_sii)
         assert g.loc["01733-00022"].id_poligono != i1.id_poligono and (g["origen"] == "Respaldo").all(), "origen = carpeta del respaldo"
     print("  predios conversión: OK")
 
@@ -1759,12 +1769,12 @@ def test_predios_parquet():
         gpd.GeoDataFrame(filas[:1], geometry="geometry", crs=4326).to_parquet(d / "Valpo" / "Otro_9778.parquet")   # mismo CUT que el anterior
         m = P.convertir_todo(d / "Valpo", d / "pq", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8, patron="*.parquet").set_index("archivo")
         assert {"9201_9201.gpkg", "Cualquiera_9777.parquet"} <= set(m.index), "suma al manifiesto, no lo reemplaza"
-        assert m.loc["9201_9201.gpkg", "estado"] == "ok" and m.loc["9201_9201.gpkg", "n"] == 11, "lo anterior queda intacto"
+        assert m.loc["9201_9201.gpkg", "estado"] == "ok" and m.loc["9201_9201.gpkg", "n"] == 16, "lo anterior queda intacto"
         v = m.loc["Cualquiera_9777.parquet"]
         assert str(v.cut).zfill(5) == "09101" or v.estado.startswith("CUT 09101 ya cubierto"), v.to_dict()
         assert m.loc["Otro_9778.parquet", "estado"].startswith("CUT 09101 ya cubierto por 9201_9201.gpkg"), "no pisa lo ya convertido"
         g = gpd.read_parquet(d / "pq" / "09101.parquet")
-        assert len(g) == 11 and set(g.cod_sii) == {"9201"}, "el parquet del respaldo anterior sigue igual"
+        assert len(g) == 16 and set(g.cod_sii) == {"9201"}, "el parquet del respaldo anterior sigue igual"
         # el mismo archivo en un destino limpio: vocabulario y filas sin polígono
         P.convertir_todo(d / "Valpo", d / "pq2", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8, patron="Cualquiera*.parquet")
         g2 = gpd.read_parquet(d / "pq2" / "09101.parquet").set_index("metodo", drop=False)
@@ -1798,7 +1808,7 @@ def test_predios_union():
         antes = gpd.read_parquet(archivo / "09101.parquet")
         (d / "Nuevo").mkdir()
         nuevo = [fila(0, "01733-00022", "NUEVA 1"), fila(1, "09999-00001", "OTRA 2", j=5), fila(1, "09999-00002", "OTRA 3", j=5),   # 2 roles en un polígono
-                 {**fila(0, "01733-00023", "SIN POLIGONO"), "geometry": None}]    # lo conoce sin polígono: no se rellena con el archivado
+                 {**fila(0, "01733-00023", "SIN POLIGONO"), "geometry": None}]    # lo conoce sin polígono: se rellena con el del archivado, aproximado
         gpd.GeoDataFrame(nuevo, geometry="geometry", crs=4326).to_parquet(d / "Nuevo" / "Segundo_9201.parquet")
         shutil.rmtree(d / "pq")                                  # destino limpio: solo el respaldo nuevo
         P.convertir_todo(d / "Nuevo", d / "pq", _bcn_predios(), "cod_comuna", "Comuna", min_participacion=0.8, patron="*.parquet")
@@ -1806,8 +1816,9 @@ def test_predios_union():
         assert len(g0) == 3 and set(g0.origen) == {"Nuevo"}
         r = P.completar_con_archivo(d / "pq", archivo).set_index("cut")
         datos_viejos = antes[antes.datos_sii & antes.rol.notna()]
-        esperados = set(datos_viejos.rol) - {"01733-00022", "01733-00023"}
-        assert int(r.loc["09101", "roles_conservados"]) == len(esperados) == 6, (r, sorted(esperados))
+        esperados = set(datos_viejos.rol) - {"01733-00022"}
+        assert int(r.loc["09101", "roles_conservados"]) == len(esperados) == 12, (r, sorted(esperados))
+        assert int(r.loc["09101", "roles_rellenados"]) == 1
         g = gpd.read_parquet(d / "pq" / "09101.parquet")
         a = g[g.rol == "01733-00022"].iloc[0]
         assert a.direccion == "NUEVA 1" and a.origen == "Nuevo", "el respaldo nuevo manda sobre el archivado en el mismo rol"
@@ -1815,8 +1826,11 @@ def test_predios_union():
         assert g[g.rol == "09999-00001"].n_unidades.iloc[0] == 2 and g[g.rol == "09999-00002"].id_poligono.iloc[0] == g[g.rol == "09999-00001"].id_poligono.iloc[0]
         assert g[g.rol == "01740-00001"].n_unidades.iloc[0] == 2, "las unidades se recalculan tras la unión"
         m = pd.read_csv(d / "pq" / "manifiesto_predios.csv", encoding="utf-8-sig", dtype={"cut": str}).set_index("cut")
-        assert m.loc["09101", "roles_conservados_respaldo1"] == 6 and m.loc["09101", "n"] == len(g) and m.loc["09101", "n_roles"] == g.rol.nunique()
+        assert m.loc["09101", "roles_conservados_respaldo1"] == 12 and m.loc["09101", "roles_rellenados_respaldo1"] == 1 and m.loc["09101", "n"] == len(g) and m.loc["09101", "n_roles"] == g.rol.nunique()
         assert (gpd.read_parquet(archivo / "09101.parquet").shape == antes.shape), "el archivo no se modifica"
+        rel = g[g.rol == "01733-00023"].iloc[0]
+        assert rel.metodo == "relleno_respaldo1" and not rel.exacto and rel.datos_sii and rel.origen == "Respaldo1", "relleno: aproximado y con su origen"
+        assert (g[g.metodo == "relleno_respaldo1"].shape[0]) == 1, "solo se marca el que el nuevo conocía sin polígono"
         # una segunda unión no repite nada
         assert int(P.completar_con_archivo(d / "pq", archivo).set_index("cut").loc["09101", "roles_conservados"]) == 0
     print("  predios unión: OK")
@@ -1880,14 +1894,18 @@ def test_app_predios():
         assert co["predio"]["id"].startswith("09101-T-") and co["predio"]["manzana"] == "01740" and co["predio"]["area_poligono_m2"] > 0
         assert [u["rol"] for u in co["unidades"]] == co["roles"] and co["unidades"][1]["sup_terreno_m2"] == 900.0 and co["unidades"][0]["direccion"] == "EDIFICIO 1 DEPTO 1"
         assert any("Copropiedad / varias unidades: 2 roles" in x for x in co["calidad"]["avisos"]) and co["geometria"]["type"] == "Polygon"
-        assert co["confianza_copropiedad"] == "alta" and co["unidades_exactas"] == 2 and co["unidades"][0]["metodo"] == "contiene"
-        # roles asignados por coordenadas o cercanía al mismo polígono: puede ser un artefacto del emparejamiento → confianza baja
-        base = {k: None for k in AP.CAMPOS + ["geom"]}
-        falsas = [{**base, "rol": f"00001-0000{i}", "cut": "09101", "id_poligono": "abc", "exacto": i == 0, "metodo": "utm" if i else "contiene", "datos_sii": True,
-                   "geom": json.dumps({"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]})} for i in range(5)]
-        rb = AP._respuesta_terreno(falsas)
-        assert rb["confianza_copropiedad"] == "baja" and rb["unidades_exactas"] == 1 and rb["n_unidades"] == 5 and rb["copropiedad"]
-        assert any("artefacto" in x for x in rb["calidad"]["avisos"])
+        assert co["confianza_copropiedad"] == "alta" and co["asignaciones_aproximadas_omitidas"] == 0 and co["unidades"][0]["metodo"] == "contiene"
+        # solo hay copropiedad con certeza (roles cuyo punto del SII está en el polígono). Un exacto con dos asignados por cercanía al mismo
+        # polígono no se agrupa: se devuelve el exacto, y se avisa de los demás
+        j = c.get("/api/predio", params={"lon": -72.593965, "lat": -38.734325, "ficha": "false"}).json()
+        assert not j["copropiedad"] and j["roles"] == ["01741-00001"] and j["n_unidades"] == 1 and j["calidad"]["geometria"] == "exacta"
+        assert any("Otros 2 roles" in x and "no se agrupan" in x for x in j["calidad"]["avisos"]), j["calidad"]["avisos"]
+        assert c.get("/api/predio", params={"cut": "09101", "rol": "1741-3", "ficha": "false"}).json()["roles"] == ["01741-00003"], "por rol: solo ese rol"
+        # dos roles solo por cercanía en el mismo polígono: el rol cuyo punto está más cerca del clic, con «asignación aproximada»
+        for lon_, esperado in ((-72.59367, "01742-00002"), (-72.59379, "01742-00001")):
+            k = c.get("/api/predio", params={"lon": lon_, "lat": -38.73430, "ficha": "false"}).json()
+            assert not k["copropiedad"] and k["roles"] == [esperado] and k["calidad"]["geometria"] == "aproximada", (lon_, k["roles"])
+            assert any("Asignación aproximada" in x for x in k["calidad"]["avisos"]) and any("Otros 1 roles" in x for x in k["calidad"]["avisos"])
         cp = c.get("/api/predio", params={"lon": -72.5950 + 2.5 * 0.00023, "lat": -38.7350 + 2.5 * 0.00027}).json()
         assert cp["copropiedad"] and cp["roles"] == co["roles"] and cp["predio"]["id"] == co["predio"]["id"] and "rol_consultado" not in cp
         assert cp["ficha"]["particion"], "la ficha normativa también sale en una copropiedad"
